@@ -9,8 +9,8 @@ import (
 
 type ApiRepository interface {
 	Create(*models.API) error
-	Delete(ID uuid.UUID, ApiGroupID uuid.UUID) error
-	Update(ID uuid.UUID, ApiGroupID uuid.UUID, updates map[string]any) (*models.API, error)
+	Delete(ID uuid.UUID, ApiGroupID uuid.UUID, workspaceID uuid.UUID) error
+	Update(ID uuid.UUID, ApiGroupID uuid.UUID, updates map[string]any, workspaceID uuid.UUID) (*models.API, error)
 	GetByID(ID uuid.UUID, ApiGroupID uuid.UUID) (*models.API, error)
 	ListByGroup(ApiGroupID uuid.UUID) ([]models.API, error)
 	ListActive() ([]models.API, error)

@@ -4,6 +4,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/junaid9001/lattrix-backend/internal/domain/models"
 	"github.com/junaid9001/lattrix-backend/internal/domain/repository"
+	"github.com/junaid9001/lattrix-backend/internal/http/dto"
 	"gorm.io/gorm"
 )
 
@@ -63,6 +64,33 @@ func (r *userRepository) CreateWorkSpace(userID uint) (uuid.UUID, error) {
 	}
 
 	return workSpace.ID, nil
+}
+
+func (r *userRepository) WorkspaceUsers(
+	workspaceID uuid.UUID,
+) ([]dto.WorkspaceUsers, error) {
+
+	var users []dto.WorkspaceUsers
+
+	err := r.db.
+		Table("users u").
+		Select(`
+			u.id AS user_id,
+			u.email,
+			r.id AS role_id,
+			r.name AS role
+		`).
+		Joins("JOIN user_roles ur ON ur.user_id = u.id").
+		Joins("JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL").
+		Where("ur.workspace_id = ?", workspaceID).
+		Scan(&users).
+		Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	return users, nil
 }
 
 func (r *userRepository) WithDB(db *gorm.DB) repository.UserRepository {

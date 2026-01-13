@@ -91,6 +91,7 @@ func (s *ApiService) UpdateApi(
 	ID uuid.UUID,
 	apiGroupID uuid.UUID,
 	dto dto.ApiUpdateDto,
+	workspaceID uuid.UUID,
 ) (*models.API, error) {
 
 	api, err := s.apiRepo.GetByID(ID, apiGroupID)
@@ -180,7 +181,7 @@ func (s *ApiService) UpdateApi(
 		return api, nil
 	}
 
-	updatedApi, err := s.apiRepo.Update(ID, apiGroupID, updates)
+	updatedApi, err := s.apiRepo.Update(ID, apiGroupID, updates, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -191,6 +192,7 @@ func (s *ApiService) UpdateApi(
 func (s *ApiService) DeleteApi(
 	ID uuid.UUID,
 	apiGroupID uuid.UUID,
+	workspaceID uuid.UUID,
 ) error {
 
 	_, err := s.apiRepo.GetByID(ID, apiGroupID)
@@ -198,7 +200,7 @@ func (s *ApiService) DeleteApi(
 		return err
 	}
 
-	if err := s.apiRepo.Delete(ID, apiGroupID); err != nil {
+	if err := s.apiRepo.Delete(ID, apiGroupID, workspaceID); err != nil {
 		return err
 	}
 

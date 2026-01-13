@@ -9,16 +9,16 @@ import (
 
 // permissions are seeded
 type Permission struct {
-	ID          uuid.UUID `gorm:"primaryKey;type:uuid;"`
-	Code        string    `gorm:"uniqueIndex;not null"` //permission name
-	Description string
+	ID          uuid.UUID `gorm:"primaryKey;type:uuid" json:"id"`
+	Code        string    `gorm:"uniqueIndex;not null" json:"code"` //permission name
+	Description string    `json:"description"`
 }
 
 type Role struct {
-	ID          uuid.UUID `gorm:"type:uuid;primaryKey"`
-	WorkspaceID uuid.UUID `gorm:"type:uuid;not null;index"`
-	Name        string    `gorm:"size:50"` //flexible
-	gorm.DeletedAt
+	ID          uuid.UUID      `gorm:"type:uuid;primaryKey" json:"id"`
+	WorkspaceID uuid.UUID      `gorm:"type:uuid;not null;index" json:"workspace_id"`
+	Name        string         `gorm:"size:50" json:"name"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 type RolePermission struct {

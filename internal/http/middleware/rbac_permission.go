@@ -16,7 +16,7 @@ func RequirePermission(rbacService *services.RbacService, code string) fiber.Han
 			return fiber.NewError(fiber.StatusUnauthorized, "unauthorized")
 		}
 
-		if role == "superadmin" {
+		if role == "superadmin" || role == "Owner" {
 			return c.Next()
 		}
 

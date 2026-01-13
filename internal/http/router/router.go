@@ -11,8 +11,8 @@ func Register(app *fiber.App, authHandler *handler.AuthHandler, profileHandler *
 	rbacService *services.RbacService) {
 	app.Get("/health", handler.HealthCheck)
 	AuthRoutes(app, authHandler)
-	ProfileRoute(app, profileHandler)
+	ProfileRoute(app, profileHandler, rbacService)
 	ApiGroupRoute(app, apiGroupHandler)
 	ApiRoutes(app, apiHandler, rbacService)
-	RbacRoute(app, rbacHandler)
+	RbacRoute(app, rbacHandler, rbacService)
 }

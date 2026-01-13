@@ -41,7 +41,7 @@ func (h *ApiHandler) RegisterHandler(c *fiber.Ctx) error {
 		})
 	}
 
-	apiGroupIDParam := c.Params("api-group-id")
+	apiGroupIDParam := c.Params("apiGroupId")
 	apiGroupID, err := uuid.Parse(apiGroupIDParam)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -70,8 +70,8 @@ func (h *ApiHandler) UpdateApi(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": "invalid body"})
 	}
 
-	ApiIDParam := c.Params("api-id")
-	ApiGroupIDParam := c.Params("api-group-id")
+	ApiIDParam := c.Params("apiId")
+	ApiGroupIDParam := c.Params("apiGroupId")
 
 	apiID, err := uuid.Parse(ApiIDParam)
 	if err != nil {
@@ -89,7 +89,16 @@ func (h *ApiHandler) UpdateApi(c *fiber.Ctx) error {
 		})
 	}
 
-	api, err := h.apiService.UpdateApi(apiID, apiGroupID, dto)
+	workspaceIDVal := c.Locals("workspaceID")
+	workspaceID, ok := workspaceIDVal.(uuid.UUID)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"success": false,
+			"message": "Unauthorized: invalid workspace context",
+		})
+	}
+
+	api, err := h.apiService.UpdateApi(apiID, apiGroupID, dto, workspaceID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"success": false,
@@ -103,17 +112,25 @@ func (h *ApiHandler) UpdateApi(c *fiber.Ctx) error {
 
 // delte api
 func (h *ApiHandler) Delete(c *fiber.Ctx) error {
-	apiID, err := uuid.Parse(c.Params("api-id"))
+	apiID, err := uuid.Parse(c.Params("apiId"))
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": "Invalid API ID"})
 	}
 
-	groupID, err := uuid.Parse(c.Params("api-group-id"))
+	groupID, err := uuid.Parse(c.Params("apiGroupId"))
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": "Invalid API group ID"})
 	}
+	workspaceIDVal := c.Locals("workspaceID")
+	workspaceID, ok := workspaceIDVal.(uuid.UUID)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"success": false,
+			"message": "Unauthorized: invalid workspace context",
+		})
+	}
 
-	if err := h.apiService.DeleteApi(apiID, groupID); err != nil {
+	if err := h.apiService.DeleteApi(apiID, groupID, workspaceID); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"success": false,
 			"message": "Failed to delete API",
@@ -128,7 +145,7 @@ func (h *ApiHandler) Delete(c *fiber.Ctx) error {
 
 func (h *ApiHandler) ListByGroup(c *fiber.Ctx) error {
 
-	apiGroupIDParam := c.Params("api-group-id")
+	apiGroupIDParam := c.Params("apiGroupId")
 	apiGroupID, err := uuid.Parse(apiGroupIDParam)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{

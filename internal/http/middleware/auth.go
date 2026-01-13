@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"log"
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
@@ -12,7 +11,7 @@ import (
 func Auth() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		tokenStr := c.Cookies("access_token")
-		log.Print(tokenStr)
+
 		if tokenStr == "" {
 			return c.Status(fiber.StatusUnauthorized).
 				JSON(fiber.Map{"success": false, "error": "missing access token"})

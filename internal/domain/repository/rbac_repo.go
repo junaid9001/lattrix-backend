@@ -12,12 +12,14 @@ type RBACrepository interface {
 	AssignPermissionToRole(roleID uuid.UUID, permissionIDs []uuid.UUID) error
 
 	AssignRoleToUser(userID uint, roleID, workspaceID uuid.UUID) error
-	AllRoles(workspaceID uuid.UUID) (*[]models.Role, error)
+	AllRoles(workspaceID uuid.UUID) ([]models.Role, error)
 
 	UserHasPermission(userID uint, workspaceID uuid.UUID, permissionCode string) (bool, error)
 	UserPermissions(userID uint, workspaceID uuid.UUID) ([]string, error)
 
 	PermissionsExist(permissionIDs []uuid.UUID) (bool, error)
+
+	AllPermissions() ([]models.Permission, error)
 
 	WithTx(tx *gorm.DB) RBACrepository
 }

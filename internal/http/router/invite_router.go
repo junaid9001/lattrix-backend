@@ -10,7 +10,9 @@ func InviteRoutes(app *fiber.App, inviteHandler *handler.InvitationHandler, noti
 	api := app.Group("/api")
 	api.Use(middleware.Auth())
 
+	//send invitation
 	api.Post("/invitations/send", inviteHandler.SendInvite)
+	//accept invitation by token
 	api.Post("/invitations/accept", inviteHandler.AcceptInvitation)
 
 	api.Get("/notifications", notifHandler.GetMyNotifications)

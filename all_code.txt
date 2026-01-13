@@ -1,0 +1,1763 @@
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\domain\repository\rbac_repo.go
+package repository
+
+import (
+	"github.com/google/uuid"
+	"github.com/junaid9001/lattrix-backend/internal/domain/models"
+	"gorm.io/gorm"
+)
+
+type RBACrepository interface {
+	CreateRole(*models.Role) error
+
+	AssignPermissionToRole(roleID uuid.UUID, permissionIDs []uuid.UUID) error
+
+	AssignRoleToUser(userID uint, roleID, workspaceID uuid.UUID) error
+	AllRoles(workspaceID uuid.UUID) ([]models.Role, error)
+
+	UserHasPermission(userID uint, workspaceID uuid.UUID, permissionCode string) (bool, error)
+	UserPermissions(userID uint, workspaceID uuid.UUID) ([]string, error)
+
+	PermissionsExist(permissionIDs []uuid.UUID) (bool, error)
+
+	AllPermissions() ([]models.Permission, error)
+
+	WithTx(tx *gorm.DB) RBACrepository
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\infra\repo\rbac_repo_gorm.go
+package repo
+
+import (
+	"github.com/google/uuid"
+	"github.com/junaid9001/lattrix-backend/internal/domain/models"
+	"github.com/junaid9001/lattrix-backend/internal/domain/repository"
+	"gorm.io/gorm"
+)
+
+type RbacRepo struct {
+	db *gorm.DB
+}
+
+func NewRbacRepo(db *gorm.DB) repository.RBACrepository {
+	return &RbacRepo{db: db}
+}
+
+func (r *RbacRepo) CreateRole(role *models.Role) error {
+	return r.db.Create(&role).Error
+}
+
+func (r *RbacRepo) AssignPermissionToRole(roleID uuid.UUID, permissionIDs []uuid.UUID) error {
+	rolePermissions := make([]models.RolePermission, 0, len(permissionIDs))
+
+	for _, val := range permissionIDs {
+		rolePermissions = append(rolePermissions, models.RolePermission{
+			ID:           uuid.New(),
+			RoleID:       roleID,
+			PermissionID: val,
+		})
+	}
+	return r.db.Create(&rolePermissions).Error
+}
+
+func (r *RbacRepo) AssignRoleToUser(userID uint, roleID, workspaceID uuid.UUID) error {
+	userRole := models.UserRole{
+		ID:          uuid.New(),
+		UserID:      userID,
+		RoleID:      roleID,
+		WorkspaceID: workspaceID,
+	}
+	return r.db.Create(&userRole).Error
+}
+
+func (r *RbacRepo) AllRoles(workspaceID uuid.UUID) ([]models.Role, error) {
+	var roles []models.Role
+
+	err := r.db.Where("workspace_id = ?", workspaceID).Find(&roles).Error
+	if err != nil {
+		return nil, err
+	}
+	r.db.Debug()
+	return roles, nil
+}
+
+func (r *RbacRepo) UserHasPermission(
+	userID uint,
+	workspaceID uuid.UUID,
+	permissionCode string,
+) (bool, error) {
+
+	var count int64
+
+	err := r.db.
+		Table("user_roles ur").
+		Joins("JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL").
+		Joins("JOIN role_permissions rp ON rp.role_id = r.id").
+		Joins("JOIN permissions p ON p.id = rp.permission_id").
+		Where("ur.user_id = ?", userID).
+		Where("ur.workspace_id = ?", workspaceID).
+		Where("p.code = ?", permissionCode).
+		Limit(1).
+		Count(&count).
+		Error
+
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
+func (r *RbacRepo) UserPermissions(userID uint, workspaceID uuid.UUID) ([]string, error) {
+	var permissions []string
+
+	err := r.db.
+		Table("user_roles ur").
+		Select("DISTINCT p.code").
+		Joins("JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL").
+		Joins("JOIN role_permissions rp ON rp.role_id = r.id").
+		Joins("JOIN permissions p ON p.id = rp.permission_id").
+		Where("ur.user_id = ?", userID).
+		Where("ur.workspace_id = ?", workspaceID).
+		Pluck("p.code", &permissions).
+		Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	return permissions, nil
+}
+
+func (r *RbacRepo) PermissionsExist(permissionIDs []uuid.UUID) (bool, error) {
+	var count int64
+	err := r.db.Table("permissions").
+		Where("id IN ?", permissionIDs).
+		Count(&count).
+		Error
+
+	if err != nil {
+		return false, err
+	}
+
+	return count == int64(len(permissionIDs)), nil
+}
+
+func (r *RbacRepo) WithTx(tx *gorm.DB) repository.RBACrepository {
+	return &RbacRepo{db: tx}
+}
+
+func (r *RbacRepo) AllPermissions() ([]models.Permission, error) {
+	var permissions []models.Permission
+
+	err := r.db.Find(&permissions).Error
+	return permissions, err
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\domain\models\rbac.go
+package models
+
+import (
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+)
+
+//all migrated
+
+// permissions are seeded
+type Permission struct {
+	ID          uuid.UUID `gorm:"primaryKey;type:uuid" json:"id"`
+	Code        string    `gorm:"uniqueIndex;not null" json:"code"` //permission name
+	Description string    `json:"description"`
+}
+
+type Role struct {
+	ID          uuid.UUID      `gorm:"type:uuid;primaryKey" json:"id"`
+	WorkspaceID uuid.UUID      `gorm:"type:uuid;not null;index" json:"workspace_id"`
+	Name        string         `gorm:"size:50" json:"name"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
+type RolePermission struct {
+	ID           uuid.UUID `gorm:"type:uuid;primaryKey"`
+	RoleID       uuid.UUID `gorm:"type:uuid;not null;index"`
+	PermissionID uuid.UUID `gorm:"type:uuid;not null"`
+}
+
+type UserRole struct {
+	ID          uuid.UUID `gorm:"type:uuid;primaryKey"`
+	UserID      uint      `gorm:"not null;index"`
+	RoleID      uuid.UUID `gorm:"type:uuid;index;not null"`
+	WorkspaceID uuid.UUID `gorm:"type:uuid;index;not null"`
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\services\rbac_service.go
+package services
+
+import (
+	"errors"
+
+	"github.com/google/uuid"
+	"github.com/junaid9001/lattrix-backend/internal/domain/models"
+	"github.com/junaid9001/lattrix-backend/internal/domain/repository"
+	"gorm.io/gorm"
+)
+
+type RbacService struct {
+	RbacRepo repository.RBACrepository
+	db       *gorm.DB
+}
+
+func NewRbacService(RbacRepo repository.RBACrepository, db *gorm.DB) *RbacService {
+	return &RbacService{RbacRepo: RbacRepo, db: db}
+}
+
+func (s *RbacService) CreateRoleAndAssignPermissions(workspaceID uuid.UUID, roleName string,
+	permissionIDs []uuid.UUID) error {
+
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+
+		rbacRepo := s.RbacRepo.WithTx(tx)
+
+		ok, err := rbacRepo.PermissionsExist(permissionIDs)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errors.New("one or more permissions are invalid")
+		}
+
+		role := &models.Role{
+			ID:          uuid.New(),
+			WorkspaceID: workspaceID,
+			Name:        roleName,
+		}
+		if err := rbacRepo.CreateRole(role); err != nil {
+			return err
+		}
+
+		if err := rbacRepo.AssignPermissionToRole(role.ID, permissionIDs); err != nil {
+			return err
+		}
+		return nil
+	})
+
+	return err
+}
+
+func (s *RbacService) AllRoles(workspaceID uuid.UUID) ([]models.Role, error) {
+	return s.RbacRepo.AllRoles(workspaceID)
+}
+
+func (s *RbacService) AllPermissions() ([]models.Permission, error) {
+	return s.RbacRepo.AllPermissions()
+}
+
+func (s *RbacService) AssignRoleToUser(userID uint, workspaceID, roleID uuid.UUID) error {
+
+	if err := s.RbacRepo.AssignRoleToUser(userID, roleID, workspaceID); err != nil {
+		return err
+	}
+	return nil
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\infra\seeds\permission_seeds.go
+package seeds
+
+import (
+	"github.com/google/uuid"
+	"github.com/junaid9001/lattrix-backend/internal/domain/models"
+	"gorm.io/gorm"
+)
+
+var permissions = []models.Permission{
+	{
+		ID:          uuid.New(),
+		Code:        "api:create",
+		Description: "Create API",
+	},
+	{
+		ID:          uuid.New(),
+		Code:        "api:update",
+		Description: "Update API",
+	},
+	{
+		ID:          uuid.New(),
+		Code:        "api:delete",
+		Description: "Delete API",
+	},
+	{
+		ID:          uuid.New(),
+		Code:        "dashboard:view",
+		Description: "View dashboard",
+	}, {
+		ID:          uuid.New(),
+		Code:        "api-group:create",
+		Description: "Create api group",
+	},
+	{
+		ID:          uuid.New(),
+		Code:        "api-group:delete",
+		Description: "delete api group",
+	}, {
+		ID:          uuid.New(),
+		Code:        "api-group:update",
+		Description: "Update api group",
+	}, {
+		ID:          uuid.New(),
+		Code:        "role:superadmin",
+		Description: "Full permission",
+	},
+}
+
+func SeedPermissions(db *gorm.DB) error {
+
+	for _, val := range permissions {
+		var existing models.Permission
+		err := db.Where("code = ?", val.Code).First(&existing).Error
+
+		if err == gorm.ErrRecordNotFound {
+			if err := db.Create(&val).Error; err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\http\handler\auth_handler.go
+package handler
+
+import (
+	"strconv"
+	"time"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
+	"github.com/junaid9001/lattrix-backend/internal/http/dto"
+	"github.com/junaid9001/lattrix-backend/internal/services"
+	"github.com/junaid9001/lattrix-backend/internal/utils/jwtutil"
+)
+
+type AuthHandler struct {
+	authSevice  *services.AuthService
+	rbacService *services.RbacService
+}
+
+func NewAuthHandler(authService *services.AuthService, rbacService *services.RbacService) *AuthHandler {
+	return &AuthHandler{
+		authSevice:  authService,
+		rbacService: rbacService,
+	}
+}
+
+// signup handler
+func (h *AuthHandler) Signup(c *fiber.Ctx) error {
+	var req dto.RegisterRequet
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "validation failed", "error": err.Error()})
+	}
+
+	err := h.authSevice.SignUP(req.Username, req.Email, req.Password)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{
+			"success": false,
+			"message": err.Error(),
+		})
+	}
+	return c.Status(200).JSON(fiber.Map{"success": true, "message": "signup success"})
+}
+
+// login handler
+func (h *AuthHandler) Login(c *fiber.Ctx) error {
+	var req dto.LoginRequest
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{
+			"success": false,
+			"message": "invalid request",
+		})
+	}
+	access, refresh, err := h.authSevice.Login(req.Email, req.Password)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{
+			"success": false,
+			"message": err.Error(),
+		})
+	}
+	c.Cookie(&fiber.Cookie{
+		Name:     "access_token",
+		Value:    access,
+		Path:     "/",
+		SameSite: "Lax",
+		Secure:   false, //true in prod
+		HTTPOnly: true,
+	})
+	c.Cookie(&fiber.Cookie{
+		Name:     "refresh_token",
+		Value:    refresh,
+		Path:     "/",
+		SameSite: "Lax",
+		Secure:   false, //true in prod
+		HTTPOnly: true,
+	})
+	return c.JSON(fiber.Map{"success": true})
+}
+
+func (h *AuthHandler) Refresh(c *fiber.Ctx) error {
+	refreshToken := c.Cookies("refresh_token")
+	if refreshToken == "" {
+		return c.Status(fiber.StatusUnauthorized).
+			JSON(fiber.Map{"success": false, "error": "missing refresh token"})
+	}
+
+	claims, err := jwtutil.ValidateRefreshToken(refreshToken)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).
+			JSON(fiber.Map{"success": false, "error": "invalid refresh token"})
+	}
+
+	userID, err := strconv.Atoi(claims.Subject)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).
+			JSON(fiber.Map{"success": false, "error": "invalid subject"})
+	}
+
+	accessToken, err := h.authSevice.RefreshAccessToken(userID)
+	if err != nil {
+		return c.Status(fiber.StatusForbidden).
+			JSON(fiber.Map{"success": false, "error": err.Error()})
+	}
+
+	c.Cookie(&fiber.Cookie{
+		Name:     "access_token",
+		Value:    accessToken,
+		Path:     "/",
+		HTTPOnly: true,
+		SameSite: fiber.CookieSameSiteLaxMode,
+		Secure:   false, // true in prod
+	})
+
+	return c.JSON(fiber.Map{
+		"success": true,
+	})
+}
+
+func (h *AuthHandler) Me(c *fiber.Ctx) error {
+	userID := c.Locals("userID").(int)
+	workspaceID := c.Locals("workspaceID").(uuid.UUID)
+	role := c.Locals("role")
+	permissions, err := h.rbacService.RbacRepo.UserPermissions(uint(userID), workspaceID)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data": fiber.Map{
+			"user_id":      userID,
+			"workspace_id": workspaceID,
+			"role":         role,
+			"permissions":  permissions,
+		},
+	})
+}
+
+func (h *AuthHandler) Logout(c *fiber.Ctx) error {
+	c.Cookie(&fiber.Cookie{
+		Name:     "access_token",
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Now().Add(-time.Hour),
+		HTTPOnly: true,
+		SameSite: "Lax",
+		Secure:   false, // true in prod
+	})
+
+	c.Cookie(&fiber.Cookie{
+		Name:     "refresh_token",
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Now().Add(-time.Hour),
+		HTTPOnly: true,
+		SameSite: "Lax",
+		Secure:   false, // true in prod
+	})
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success": true,
+		"message": "Logged out successfully",
+	})
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\server\server.go
+package server
+
+import (
+	"log"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/junaid9001/lattrix-backend/internal/config"
+	"github.com/junaid9001/lattrix-backend/internal/http/handler"
+	"github.com/junaid9001/lattrix-backend/internal/http/router"
+	"github.com/junaid9001/lattrix-backend/internal/infra"
+	"github.com/junaid9001/lattrix-backend/internal/infra/repo"
+	"github.com/junaid9001/lattrix-backend/internal/services"
+)
+
+func Start() {
+	config.Load()
+	db := infra.ConnectDB()
+
+	userRepo := repo.NewUserRepository(db)
+	apiGroupRepo := repo.NewApiGroupRepository(db)
+	apiRepo := repo.NewApiRepo(db)
+	rbacRepo := repo.NewRbacRepo(db)
+	inviteRepo := repo.NewInvitationRepo(db)
+	notificationRepo := repo.NewNotificationRepo(db)
+
+	authService := services.NewAuthSevice(userRepo, apiGroupRepo, rbacRepo, db)
+	profileService := services.NewProfileService(userRepo)
+	apiGroupService := services.NewApiGroupService(apiGroupRepo, userRepo)
+	apiService := services.NewApiService(apiRepo)
+	rbacService := services.NewRbacService(rbacRepo, db)
+	inviteService := services.NewInvitationService(db, inviteRepo, notificationRepo, rbacRepo, userRepo)
+
+	authHandler := handler.NewAuthHandler(authService, rbacService)
+	profileHandler := handler.NewProfileHandler(profileService)
+	apiGroupHandler := handler.NewApiGroupHandler(apiGroupService)
+	apiHandler := handler.NewApiHandler(apiService)
+	rbacHandler := handler.NewRbacHandler(rbacService)
+
+	inviteHandler := handler.NewInvitationHandler(inviteService)
+	notificationHandler := handler.NewNotificationHandler(notificationRepo)
+
+	app := fiber.New()
+	app.Use(cors.New(cors.Config{
+		AllowOrigins:     "http://localhost:5173",
+		AllowCredentials: true,
+		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
+		AllowHeaders:     "Origin, Content-Type, Accept",
+	}))
+
+	router.Register(app, authHandler, profileHandler, apiGroupHandler, apiHandler, rbacHandler, rbacService)
+	router.InviteRoutes(app, inviteHandler, notificationHandler)
+
+	log.Fatal(app.Listen(":8080"))
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\infra\repo\userrepo_gorm.go
+package repo
+
+import (
+	"github.com/google/uuid"
+	"github.com/junaid9001/lattrix-backend/internal/domain/models"
+	"github.com/junaid9001/lattrix-backend/internal/domain/repository"
+	"github.com/junaid9001/lattrix-backend/internal/http/dto"
+	"gorm.io/gorm"
+)
+
+type userRepository struct {
+	db *gorm.DB
+}
+
+func NewUserRepository(db *gorm.DB) repository.UserRepository {
+	return &userRepository{db: db}
+}
+
+func (r *userRepository) Create(user *models.User) error {
+	return r.db.Create(user).Error
+}
+
+func (r *userRepository) FindByEmail(email string) (*models.User, error) {
+	var user models.User
+	if err := r.db.Where("email=?", email).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *userRepository) FindByID(ID int) (*models.User, error) {
+	var user models.User
+
+	if err := r.db.First(&user, ID).Error; err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+func (r *userRepository) UpdateProfile(userID int, updates map[string]interface{}) (*models.User, error) {
+
+	if err := r.db.Model(&models.User{}).Where("id = ?", userID).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+
+	var user models.User
+	if err := r.db.First(&user, userID).Error; err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+// only during signup oneuser/oneworkspace for now
+func (r *userRepository) CreateWorkSpace(userID uint) (uuid.UUID, error) {
+	workSpace := models.Workspace{
+		ID:      uuid.New(),
+		OwnerID: userID,
+	}
+	err := r.db.Create(&workSpace).Error
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	return workSpace.ID, nil
+}
+
+func (r *userRepository) WorkspaceUsers(
+	workspaceID uuid.UUID,
+) ([]dto.WorkspaceUsers, error) {
+
+	var users []dto.WorkspaceUsers
+
+	err := r.db.
+		Table("users u").
+		Select(`
+			u.id AS user_id,
+			u.email,
+			r.id AS role_id,
+			r.name AS role
+		`).
+		Joins("JOIN user_roles ur ON ur.user_id = u.id").
+		Joins("JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL").
+		Where("ur.workspace_id = ?", workspaceID).
+		Scan(&users).
+		Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
+func (r *userRepository) WithDB(db *gorm.DB) repository.UserRepository {
+	return &userRepository{db: db}
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\http\handler\rbac_handler.go
+package handler
+
+import (
+	"strconv"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
+	"github.com/junaid9001/lattrix-backend/internal/services"
+)
+
+type RbacHandler struct {
+	rbacService *services.RbacService
+}
+
+func NewRbacHandler(rbacService *services.RbacService) *RbacHandler {
+	return &RbacHandler{rbacService: rbacService}
+}
+
+type createRoleRequestDTO struct {
+	Name          string      `json:"name" validate:"required,min=2"`
+	PermissionIDs []uuid.UUID `json:"permission_ids" validate:"required,min=1,dive,required"`
+}
+
+func (h *RbacHandler) CreateRoleAndAssignPermission(c *fiber.Ctx) error {
+
+	var dto createRoleRequestDTO
+
+	if err := c.BodyParser(&dto); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
+	}
+
+	workspaceIDval := c.Locals("workspaceID")
+
+	workspaceID, ok := workspaceIDval.(uuid.UUID)
+
+	if !ok {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid workspaceID")
+	}
+
+	err := h.rbacService.CreateRoleAndAssignPermissions(workspaceID, dto.Name, dto.PermissionIDs)
+
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"success": true,
+		"message": "Role created and permissions assigned successfully",
+	})
+
+}
+
+func (h *RbacHandler) GetAllRoles(c *fiber.Ctx) error {
+	workspaceIDval := c.Locals("workspaceID")
+	workspaceID, ok := workspaceIDval.(uuid.UUID)
+
+	if !ok {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid workspaceID")
+	}
+
+	roles, err := h.rbacService.AllRoles(workspaceID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"message": err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success": true,
+		"data":    roles,
+	})
+
+}
+
+func (h *RbacHandler) GetAllPermissions(c *fiber.Ctx) error {
+	permissions, err := h.rbacService.AllPermissions()
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data":    permissions,
+	})
+}
+
+func (h *RbacHandler) UpdateUserRole(c *fiber.Ctx) error {
+	userID, _ := strconv.Atoi(c.Params("userId"))
+	workspaceID := c.Locals("workspaceID").(uuid.UUID)
+
+	var body struct {
+		RoleID uuid.UUID `json:"role_id"`
+	}
+
+	if err := c.BodyParser(&body); err != nil {
+		return fiber.NewError(400, "invalid body")
+	}
+
+	err := h.rbacService.AssignRoleToUser(uint(userID), workspaceID, body.RoleID)
+	if err != nil {
+		return fiber.NewError(500, err.Error())
+	}
+
+	return c.JSON(fiber.Map{"success": true})
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\services\profile_service.go
+package services
+
+import (
+	"errors"
+
+	"github.com/google/uuid"
+	"github.com/junaid9001/lattrix-backend/internal/domain/models"
+	"github.com/junaid9001/lattrix-backend/internal/domain/repository"
+	"github.com/junaid9001/lattrix-backend/internal/http/dto"
+)
+
+type ProfileService struct {
+	userRepo repository.UserRepository
+}
+
+func NewProfileService(userRepo repository.UserRepository) *ProfileService {
+	return &ProfileService{userRepo: userRepo}
+
+}
+
+func (s *ProfileService) GetUserProfile(userID int) (*models.User, error) {
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func (s *ProfileService) UpdateProfileByID(userID int, username, email *string) (*models.User, error) {
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	updates := make(map[string]interface{})
+
+	if username != nil && user.Username != *username {
+		updates["username"] = *username
+	}
+
+	if email != nil && user.Email != *email {
+		updates["email"] = *email
+	}
+
+	if len(updates) == 0 {
+		return user, errors.New("nothing to update")
+	}
+
+	user, err = s.userRepo.UpdateProfile(userID, updates)
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+
+}
+
+func (s *ProfileService) GetWorkspaceUsers(workspaceID uuid.UUID) ([]dto.WorkspaceUsers, error) {
+	users, err := s.userRepo.WorkspaceUsers(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if users == nil {
+		return []dto.WorkspaceUsers{}, nil
+	}
+	return users, nil
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\http\handler\userprofile_handler.go
+package handler
+
+import (
+	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
+	"github.com/junaid9001/lattrix-backend/internal/http/dto"
+	"github.com/junaid9001/lattrix-backend/internal/services"
+)
+
+type UserProfileHandler struct {
+	profileService *services.ProfileService
+}
+
+func NewProfileHandler(profileSevice *services.ProfileService) *UserProfileHandler {
+	return &UserProfileHandler{profileService: profileSevice}
+}
+
+func (h *UserProfileHandler) GetProfile(c *fiber.Ctx) error {
+	val := c.Locals("userID")
+	if val == nil {
+		return c.Status(401).JSON(fiber.Map{"success": false})
+	}
+
+	userID, ok := val.(int)
+	if !ok {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"message": "invalid user context",
+		})
+	}
+
+	user, err := h.profileService.GetUserProfile(userID)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"success": false, "message": "user not found"})
+	}
+
+	return c.JSON(fiber.Map{"success": true, "data": fiber.Map{
+		"username": user.Username,
+		"email":    user.Email,
+	}})
+}
+
+func (h *UserProfileHandler) UpdateProfileByID(c *fiber.Ctx) error {
+	val := c.Locals("userID")
+	if val == nil {
+		return c.Status(401).JSON(fiber.Map{"success": false})
+	}
+
+	userID, ok := val.(int)
+	if !ok {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"message": "invalid user context",
+		})
+	}
+
+	var req dto.ProfileUpdateRequet
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "validation failed", "error": err.Error()})
+	}
+
+	user, err := h.profileService.UpdateProfileByID(userID, req.Username, req.Email)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"message": err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data": fiber.Map{
+			"id":       user.ID,
+			"username": user.Username,
+			"email":    user.Email,
+		},
+	})
+
+}
+
+func (h *UserProfileHandler) GetWorkspaceUsers(c *fiber.Ctx) error {
+	val := c.Locals("workspaceID")
+	if val == nil {
+		return c.Status(401).JSON(fiber.Map{"success": false})
+	}
+
+	workspaceID, ok := val.(uuid.UUID)
+	if !ok {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"message": "invalid workspace context",
+		})
+	}
+
+	users, err := h.profileService.GetWorkspaceUsers(workspaceID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"message": err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data":    users,
+	})
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\http\router\profile.go
+package router
+
+import (
+	"github.com/gofiber/fiber/v2"
+	"github.com/junaid9001/lattrix-backend/internal/http/handler"
+	"github.com/junaid9001/lattrix-backend/internal/http/middleware"
+	"github.com/junaid9001/lattrix-backend/internal/services"
+)
+
+func ProfileRoute(app *fiber.App, profileHandler *handler.UserProfileHandler, rabcService *services.RbacService) {
+	user := app.Group("/user")
+	user.Use(middleware.Auth())
+	user.Get("/profile", profileHandler.GetProfile)
+	user.Put("/profile", profileHandler.UpdateProfileByID)
+	app.Get("/users", middleware.Auth(), middleware.RequirePermission(rabcService, "role:superadmin"), profileHandler.GetWorkspaceUsers)
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\utils\jwtutil\jwt.go
+package jwtutil
+
+import (
+	"errors"
+	"log"
+	"strconv"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/junaid9001/lattrix-backend/internal/config"
+)
+
+type AccessClaims struct {
+	Role        string `json:"role"`
+	WorkspaceID string `json:"workspace_id"`
+	TokenType   string `json:"token_type"`
+
+	jwt.RegisteredClaims
+}
+
+type RefreshClaims struct {
+	TokenType string `json:"token_type"`
+	jwt.RegisteredClaims
+}
+
+func CreateAccessToken(userID int, workSpaceID string, role string) (string, error) {
+	secret := config.AppConfig.JWT_KEY
+
+	claims := AccessClaims{
+		Role:        role,
+		WorkspaceID: workSpaceID,
+		TokenType:   "access",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   strconv.Itoa(userID),
+			Issuer:    "lattrix",
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(60 * time.Minute)),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	return token.SignedString(secret)
+}
+
+func ValidateAccessToken(tokenStr string) (*AccessClaims, error) {
+	if tokenStr == "" {
+		return nil, errors.New("token not found")
+	}
+
+	secret := config.AppConfig.JWT_KEY
+
+	claims := &AccessClaims{}
+
+	token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+		return secret, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if !token.Valid {
+		log.Print(token)
+		return nil, errors.New("invalid token")
+	}
+
+	if claims.TokenType != "access" {
+		return nil, errors.New("not an access token")
+	}
+
+	return claims, nil
+}
+
+func ValidateRefreshToken(tokenStr string) (*RefreshClaims, error) {
+	if tokenStr == "" {
+		return nil, errors.New("token not found")
+	}
+
+	secret := config.AppConfig.JWT_KEY
+
+	claims := &RefreshClaims{}
+
+	token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+		return secret, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if !token.Valid {
+		return nil, errors.New("invalid token")
+	}
+
+	if claims.TokenType != "refresh" {
+		return nil, errors.New("not a refresh token")
+	}
+
+	return claims, nil
+}
+func CreateRefreshToken(userID int) (string, error) {
+	secret := config.AppConfig.JWT_KEY
+
+	claims := RefreshClaims{
+		TokenType: "refresh",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   strconv.Itoa(userID),
+			Issuer:    "lattrix",
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	return token.SignedString(secret)
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\infra\repo\api_repo_grom.go
+package repo
+
+import (
+	"errors"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/junaid9001/lattrix-backend/internal/domain/models"
+	"github.com/junaid9001/lattrix-backend/internal/domain/repository"
+	"gorm.io/gorm"
+)
+
+type ApiRepo struct {
+	db *gorm.DB
+}
+
+func NewApiRepo(db *gorm.DB) repository.ApiRepository {
+	return &ApiRepo{db: db}
+}
+
+func (r *ApiRepo) Create(api *models.API) error {
+	return r.db.Create(api).Error
+}
+
+func (r *ApiRepo) Delete(ID uuid.UUID, ApiGroupID uuid.UUID) error {
+	result := r.db.Where("id = ? AND api_group_id=?", ID, ApiGroupID).Delete(&models.API{})
+	if result.Error != nil {
+		return result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		return errors.New("api not found or access denied")
+	}
+
+	return nil
+}
+
+func (r *ApiRepo) Update(ID uuid.UUID, ApiGroupID uuid.UUID, updates map[string]any) (*models.API, error) {
+	result := r.db.
+		Model(&models.API{}).
+		Where("id = ? AND api_group_id = ?", ID, ApiGroupID).
+		Updates(updates)
+
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		return nil, errors.New("api not found or access denied")
+	}
+
+	var api models.API
+
+	if err := r.db.First(&api, ID).Error; err != nil {
+		return nil, err
+	}
+
+	return &api, nil
+
+}
+
+func (r *ApiRepo) GetByID(ID uuid.UUID, ApiGroupID uuid.UUID) (*models.API, error) {
+	var api models.API
+	err := r.db.Where("id = ? AND api_group_id = ?", ID, ApiGroupID).First(&api).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &api, nil
+}
+
+func (r *ApiRepo) ListByGroup(ApiGroupID uuid.UUID) ([]models.API, error) {
+	var apis []models.API
+
+	err := r.db.Where("api_group_id = ?", ApiGroupID).Find(&apis).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return apis, nil
+}
+
+func (r *ApiRepo) ListActive() ([]models.API, error) {
+	var apis []models.API
+
+	err := r.db.Where("is_active = ?", true).Find(&apis).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return apis, nil
+}
+
+func (r *ApiRepo) UpdateStatus(ID uuid.UUID, ApiGroupID uuid.UUID, lastStatus string, lastCheckedAt time.Time) error {
+	result := r.db.Model(&models.API{}).
+		Where("id = ? AND api_group_id = ?", ID, ApiGroupID).
+		Updates(map[string]any{
+			"last_status":     lastStatus,
+			"last_checked_at": lastCheckedAt,
+		})
+
+	if result.Error != nil {
+		return result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+
+	return nil
+}
+
+func (r *ApiRepo) ListDueForCheck(now time.Time) ([]models.API, error) {
+	var apis []models.API
+
+	result := r.db.Where("is_active = ?", true).
+		Where("last_checked_at IS NULL OR last_checked_at + (interval_seconds::text || ' seconds')::interval <= ?", now).
+		Find(&apis)
+
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	return apis, nil
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\infra\repo\apigroup_repo_gorm.go
+package repo
+
+import (
+	"errors"
+
+	"github.com/google/uuid"
+	"github.com/junaid9001/lattrix-backend/internal/domain/models"
+	"github.com/junaid9001/lattrix-backend/internal/domain/repository"
+	"gorm.io/gorm"
+)
+
+type apiGroupRepo struct {
+	db *gorm.DB
+}
+
+func NewApiGroupRepository(db *gorm.DB) repository.ApiGroupRepository {
+	return &apiGroupRepo{db: db}
+}
+
+func (r *apiGroupRepo) Create(apiGroup *models.ApiGroup) error {
+	return r.db.Create(apiGroup).Error
+}
+
+func (r *apiGroupRepo) Delete(ID, workspaceID uuid.UUID) error {
+	result := r.db.Where("id = ? AND workspace_id = ?", ID, workspaceID).Delete(&models.ApiGroup{})
+
+	if result.Error != nil {
+		return result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		return errors.New("api group not found or access denied")
+	}
+	return nil
+}
+
+func (r *apiGroupRepo) FindByID(ID, workspaceID uuid.UUID) (*models.ApiGroup, error) {
+	var apiGroup models.ApiGroup
+
+	err := r.db.
+		Where("id = ? AND workspace_id = ?", ID, workspaceID).
+		First(&apiGroup).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &apiGroup, nil
+}
+
+func (r *apiGroupRepo) Update(id uuid.UUID, workspaceID uuid.UUID, updates map[string]any) (*models.ApiGroup, error) {
+
+	result := r.db.
+		Model(&models.ApiGroup{}).
+		Where("id = ? AND workspace_id = ?", id, workspaceID).
+		Updates(updates)
+
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		return nil, errors.New("api group not found or access denied")
+	}
+
+	var apiGroup models.ApiGroup
+	r.db.First(&apiGroup, id) //not multitenat now
+
+	return &apiGroup, nil
+}
+
+func (r *apiGroupRepo) WithDB(db *gorm.DB) repository.ApiGroupRepository {
+	return &apiGroupRepo{db: db}
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\http\router\rbac.go
+package router
+
+import (
+	"github.com/gofiber/fiber/v2"
+	"github.com/junaid9001/lattrix-backend/internal/http/handler"
+	"github.com/junaid9001/lattrix-backend/internal/http/middleware"
+)
+
+func RbacRoute(app *fiber.App, h *handler.RbacHandler) {
+	rbac := app.Group("/rbac")
+	rbac.Use(middleware.Auth())
+
+	rbac.Post("/roles", h.CreateRoleAndAssignPermission)
+	rbac.Get("/roles", h.GetAllRoles)
+
+	rbac.Get("/permissions", h.GetAllPermissions)
+	rbac.Put("/users/:userId/role", h.UpdateUserRole)
+
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\http\router\router.go
+package router
+
+import (
+	"github.com/gofiber/fiber/v2"
+	"github.com/junaid9001/lattrix-backend/internal/http/handler"
+	"github.com/junaid9001/lattrix-backend/internal/services"
+)
+
+func Register(app *fiber.App, authHandler *handler.AuthHandler, profileHandler *handler.UserProfileHandler,
+	apiGroupHandler *handler.ApiGroupHandler, apiHandler *handler.ApiHandler, rbacHandler *handler.RbacHandler,
+	rbacService *services.RbacService) {
+	app.Get("/health", handler.HealthCheck)
+	AuthRoutes(app, authHandler)
+	ProfileRoute(app, profileHandler, rbacService)
+	ApiGroupRoute(app, apiGroupHandler)
+	ApiRoutes(app, apiHandler, rbacService)
+	RbacRoute(app, rbacHandler)
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\services\api_service.go
+package services
+
+import (
+	"encoding/json"
+	"errors"
+
+	"github.com/google/uuid"
+	"github.com/junaid9001/lattrix-backend/internal/domain/models"
+	"github.com/junaid9001/lattrix-backend/internal/domain/repository"
+	"github.com/junaid9001/lattrix-backend/internal/http/dto"
+)
+
+type ApiService struct {
+	apiRepo repository.ApiRepository
+}
+
+func NewApiService(apiRepo repository.ApiRepository) *ApiService {
+	return &ApiService{apiRepo: apiRepo}
+}
+
+func (s *ApiService) RegisterApiService(
+	userID uint,
+	apiGroupID uuid.UUID,
+	workspaceID uuid.UUID,
+	dto *dto.ApiRegisterDto,
+) (*models.API, error) {
+
+	headers, err := json.Marshal(dto.Headers)
+	if err != nil {
+		return nil, err
+	}
+
+	body, err := json.Marshal(dto.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	expectedStatusCodes, err := json.Marshal(dto.ExpectedStatusCodes)
+	if err != nil {
+		return nil, err
+	}
+
+	interval := 60
+	if dto.IntervalSeconds != nil {
+		interval = *dto.IntervalSeconds
+	}
+
+	timeout := 3000
+	if dto.TimeoutMs != nil {
+		timeout = *dto.TimeoutMs
+	}
+
+	if dto.AuthType != "NONE" && dto.AuthValue == nil {
+		return nil, errors.New("auth_value required")
+	}
+
+	id := uuid.New()
+
+	api := models.API{
+		ID:                     id,
+		UserID:                 userID,
+		ApiGroupID:             apiGroupID,
+		WorkspaceID:            workspaceID,
+		Name:                   dto.Name,
+		Description:            dto.Description,
+		URL:                    dto.URL,
+		Method:                 dto.Method,
+		AuthType:               dto.AuthType,
+		AuthIn:                 dto.AuthIn,
+		AuthKey:                dto.AuthKey,
+		AuthValue:              dto.AuthValue,
+		Headers:                headers,
+		BodyType:               dto.BodyType,
+		Body:                   body,
+		IntervalSeconds:        interval,
+		TimeoutMs:              timeout,
+		IsActive:               true,
+		ExpectedStatusCodes:    expectedStatusCodes,
+		ExpectedResponseTimeMs: dto.ExpectedResponseTimeMs,
+		ExpectedBodyContains:   dto.ExpectedBodyContains,
+	}
+
+	if err := s.apiRepo.Create(&api); err != nil {
+		return nil, err
+	}
+
+	return &api, nil
+}
+
+func (s *ApiService) UpdateApi(
+	ID uuid.UUID,
+	apiGroupID uuid.UUID,
+	dto dto.ApiUpdateDto,
+) (*models.API, error) {
+
+	api, err := s.apiRepo.GetByID(ID, apiGroupID)
+	if err != nil {
+		return nil, err
+	}
+
+	updates := make(map[string]any)
+
+	if dto.Name != nil && api.Name != *dto.Name {
+		updates["name"] = *dto.Name
+	}
+
+	if dto.Description != nil {
+		updates["description"] = dto.Description
+	}
+
+	if dto.URL != nil && api.URL != *dto.URL {
+		updates["url"] = *dto.URL
+	}
+
+	if dto.Method != nil && api.Method != *dto.Method {
+		updates["method"] = *dto.Method
+	}
+
+	if dto.AuthType != nil && api.AuthType != *dto.AuthType {
+		updates["auth_type"] = *dto.AuthType
+	}
+
+	if dto.AuthIn != nil {
+		updates["auth_in"] = dto.AuthIn
+	}
+
+	if dto.AuthKey != nil {
+		updates["auth_key"] = dto.AuthKey
+	}
+
+	if dto.AuthValue != nil {
+		updates["auth_value"] = dto.AuthValue
+	}
+
+	if dto.Headers != nil {
+		headersJSON, err := json.Marshal(*dto.Headers)
+		if err != nil {
+			return nil, err
+		}
+		updates["headers"] = headersJSON
+	}
+
+	if dto.BodyType != nil {
+		updates["body_type"] = dto.BodyType
+	}
+
+	if dto.Body != nil {
+		bodyJSON, err := json.Marshal(*dto.Body)
+		if err != nil {
+			return nil, err
+		}
+		updates["body"] = bodyJSON
+	}
+
+	if dto.IntervalSeconds != nil && api.IntervalSeconds != *dto.IntervalSeconds {
+		updates["interval_seconds"] = *dto.IntervalSeconds
+	}
+
+	if dto.TimeoutMs != nil && api.TimeoutMs != *dto.TimeoutMs {
+		updates["timeout_ms"] = *dto.TimeoutMs
+	}
+
+	if dto.ExpectedStatusCodes != nil {
+		codesJSON, err := json.Marshal(*dto.ExpectedStatusCodes)
+		if err != nil {
+			return nil, err
+		}
+		updates["expected_status_codes"] = codesJSON
+	}
+
+	if dto.ExpectedResponseTimeMs != nil {
+		updates["expected_response_time_ms"] = dto.ExpectedResponseTimeMs
+	}
+
+	if dto.ExpectedBodyContains != nil {
+		updates["expected_body_contains"] = dto.ExpectedBodyContains
+	}
+
+	if len(updates) == 0 {
+		return api, nil
+	}
+
+	updatedApi, err := s.apiRepo.Update(ID, apiGroupID, updates)
+	if err != nil {
+		return nil, err
+	}
+
+	return updatedApi, nil
+}
+
+func (s *ApiService) DeleteApi(
+	ID uuid.UUID,
+	apiGroupID uuid.UUID,
+) error {
+
+	_, err := s.apiRepo.GetByID(ID, apiGroupID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.apiRepo.Delete(ID, apiGroupID); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+//list by groupid
+
+func (s *ApiService) ListApisByGroup(apiGroupID uuid.UUID) ([]models.API, error) {
+	return s.apiRepo.ListByGroup(apiGroupID)
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\services\auth_service.go
+package services
+
+import (
+	"errors"
+
+	"github.com/google/uuid"
+	"github.com/junaid9001/lattrix-backend/internal/domain/models"
+	"github.com/junaid9001/lattrix-backend/internal/domain/repository"
+	"github.com/junaid9001/lattrix-backend/internal/utils/jwtutil"
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
+)
+
+type AuthService struct {
+	userRepo     repository.UserRepository
+	apiGroupRepo repository.ApiGroupRepository
+	rbacRepo     repository.RBACrepository
+	db           *gorm.DB
+}
+
+func NewAuthSevice(userRepo repository.UserRepository, apiGroupRepo repository.ApiGroupRepository, rbacRepo repository.RBACrepository, db *gorm.DB) *AuthService {
+	return &AuthService{userRepo: userRepo, apiGroupRepo: apiGroupRepo, rbacRepo: rbacRepo, db: db}
+}
+
+func (s *AuthService) SignUP(username, email, password string) error {
+	if _, err := s.userRepo.FindByEmail(email); err == nil {
+		return errors.New("email already exists")
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		userRepo := s.userRepo.WithDB(tx)
+		apiGroupRepo := s.apiGroupRepo.WithDB(tx)
+		rbacRepo := s.rbacRepo.WithTx(tx)
+
+		user := &models.User{
+			Username: username,
+			Email:    email,
+			Password: string(hashed),
+			Role:     "superadmin",
+		}
+
+		if err := userRepo.Create(user); err != nil {
+			return err
+		}
+		uuidd, err := userRepo.CreateWorkSpace(user.ID)
+		if err != nil {
+			return err
+		}
+		user.WorkspaceID = uuidd
+		tx.Save(&user)
+		ownerRole := &models.Role{
+			ID:          uuid.New(),
+			WorkspaceID: user.WorkspaceID,
+			Name:        "Owner",
+		}
+		if err := rbacRepo.CreateRole(ownerRole); err != nil {
+			return err
+		}
+
+		var superPerm models.Permission
+		if err := tx.Where("code = ?", "role:superadmin").First(&superPerm).Error; err != nil {
+			return errors.New("system error: superadmin permission not seeded")
+		}
+
+		if err := rbacRepo.AssignPermissionToRole(ownerRole.ID, []uuid.UUID{superPerm.ID}); err != nil {
+			return err
+		}
+
+		if err := rbacRepo.AssignRoleToUser(user.ID, ownerRole.ID, user.WorkspaceID); err != nil {
+			return err
+		}
+
+		mainApiGroup := &models.ApiGroup{
+			ID:             uuid.New(),
+			WorkspaceID:    user.WorkspaceID,
+			Name:           "main",
+			CreatedByID:    user.ID,
+			CreatedByEmail: user.Email,
+			Description:    "Default Group",
+		}
+
+		if err := apiGroupRepo.Create(mainApiGroup); err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
+func (s *AuthService) Login(email, password string) (string, string, error) {
+
+	user, err := s.userRepo.FindByEmail(email)
+	if err != nil {
+		return "", "", errors.New("invalid email or password")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
+		return "", "", errors.New("invalid email or password")
+	}
+
+	access, err := jwtutil.CreateAccessToken(int(user.ID), user.WorkspaceID.String(), user.Role)
+	if err != nil {
+		return "", "", err
+	}
+	refresh, err := jwtutil.CreateRefreshToken(int(user.ID))
+	if err != nil {
+		return "", "", err
+	}
+
+	return access, refresh, nil
+
+}
+
+func (s *AuthService) RefreshAccessToken(id int) (string, error) {
+	user, err := s.userRepo.FindByID(id)
+	if err != nil {
+		return "", errors.New("user not found")
+	}
+
+	if !user.IsActive {
+		return "", errors.New("user account is deactivated")
+	}
+
+	return jwtutil.CreateAccessToken(int(user.ID), user.WorkspaceID.String(), user.Role)
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\domain\models\apis.go
+package models
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/datatypes"
+)
+
+// migrated
+type API struct {
+	ID          uuid.UUID `gorm:"primaryKey;not null;type:uuid"`
+	UserID      uint      `gorm:"not null"`
+	ApiGroupID  uuid.UUID `gorm:"type:uuid;not null"`
+	WorkspaceID uuid.UUID `gorm:"type:uuid;not null"`
+	Name        string    `gorm:"size:50;not null"`
+	Description *string   `gorm:"size:255"`
+
+	URL    string `gorm:"type:text;not null"`
+	Method string `gorm:"size:20;not null;default:GET"`
+
+	AuthType  string  `gorm:"size:20;not null"` //none ,bearer,api-key
+	AuthIn    *string `gorm:"size:20"`          //header/query
+	AuthKey   *string `gorm:"size:100"`         //authorization,xapikey
+	AuthValue *string `gorm:"type:text"`
+
+	Headers  datatypes.JSON `gorm:"type:jsonb"`
+	BodyType *string        `gorm:"size:30"` //json,form-data,none
+	Body     datatypes.JSON `gorm:"type:jsonb"`
+
+	IntervalSeconds int  `gorm:"not null;default:60"`
+	TimeoutMs       int  `gorm:"not null;default:3000"`
+	IsActive        bool `gorm:"default:true;index"`
+
+	ExpectedStatusCodes    datatypes.JSON `gorm:"type:jsonb"` //[200,201]
+	ExpectedResponseTimeMs *int
+	ExpectedBodyContains   *string `gorm:"size:20"`
+
+	LastCheckedAt *time.Time `gorm:"index"`
+	LastStatus    string     `gorm:"size:20"`
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// File: c:\Users\JUNAID\Desktop\lattrix-backend\internal\domain\models\apis.go
+package models
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/datatypes"
+)
+
+// migrated
+type API struct {
+	ID          uuid.UUID `gorm:"primaryKey;not null;type:uuid"`
+	UserID      uint      `gorm:"not null"`
+	ApiGroupID  uuid.UUID `gorm:"type:uuid;not null"`
+	WorkspaceID uuid.UUID `gorm:"type:uuid;not null"`
+	Name        string    `gorm:"size:50;not null"`
+	Description *string   `gorm:"size:255"`
+
+	URL    string `gorm:"type:text;not null"`
+	Method string `gorm:"size:20;not null;default:GET"`
+
+	AuthType  string  `gorm:"size:20;not null"` //none ,bearer,api-key
+	AuthIn    *string `gorm:"size:20"`          //header/query
+	AuthKey   *string `gorm:"size:100"`         //authorization,xapikey
+	AuthValue *string `gorm:"type:text"`
+
+	Headers  datatypes.JSON `gorm:"type:jsonb"`
+	BodyType *string        `gorm:"size:30"` //json,form-data,none
+	Body     datatypes.JSON `gorm:"type:jsonb"`
+
+	IntervalSeconds int  `gorm:"not null;default:60"`
+	TimeoutMs       int  `gorm:"not null;default:3000"`
+	IsActive        bool `gorm:"default:true;index"`
+
+	ExpectedStatusCodes    datatypes.JSON `gorm:"type:jsonb"` //[200,201]
+	ExpectedResponseTimeMs *int
+	ExpectedBodyContains   *string `gorm:"size:20"`
+
+	LastCheckedAt *time.Time `gorm:"index"`
+	LastStatus    string     `gorm:"size:20"`
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}

@@ -5,6 +5,7 @@ package repository
 import (
 	"github.com/google/uuid"
 	"github.com/junaid9001/lattrix-backend/internal/domain/models"
+	"github.com/junaid9001/lattrix-backend/internal/http/dto"
 	"gorm.io/gorm"
 )
 
@@ -15,4 +16,5 @@ type UserRepository interface {
 	UpdateProfile(userID int, updates map[string]interface{}) (*models.User, error)
 	CreateWorkSpace(userID uint) (uuid.UUID, error)
 	WithDB(db *gorm.DB) UserRepository
+	WorkspaceUsers(workspaceID uuid.UUID) ([]dto.WorkspaceUsers, error)
 }

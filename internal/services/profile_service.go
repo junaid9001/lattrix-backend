@@ -3,8 +3,10 @@ package services
 import (
 	"errors"
 
+	"github.com/google/uuid"
 	"github.com/junaid9001/lattrix-backend/internal/domain/models"
 	"github.com/junaid9001/lattrix-backend/internal/domain/repository"
+	"github.com/junaid9001/lattrix-backend/internal/http/dto"
 )
 
 type ProfileService struct {
@@ -51,4 +53,15 @@ func (s *ProfileService) UpdateProfileByID(userID int, username, email *string) 
 	}
 	return user, nil
 
+}
+
+func (s *ProfileService) GetWorkspaceUsers(workspaceID uuid.UUID) ([]dto.WorkspaceUsers, error) {
+	users, err := s.userRepo.WorkspaceUsers(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if users == nil {
+		return []dto.WorkspaceUsers{}, nil
+	}
+	return users, nil
 }

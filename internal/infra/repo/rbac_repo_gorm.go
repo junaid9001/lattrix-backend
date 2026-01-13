@@ -33,23 +33,41 @@ func (r *RbacRepo) AssignPermissionToRole(roleID uuid.UUID, permissionIDs []uuid
 }
 
 func (r *RbacRepo) AssignRoleToUser(userID uint, roleID, workspaceID uuid.UUID) error {
-	userRole := models.UserRole{
-		ID:          uuid.New(),
-		UserID:      userID,
-		RoleID:      roleID,
-		WorkspaceID: workspaceID,
+	var role models.Role
+	if err := r.db.Where("id = ?", roleID).First(&role).Error; err != nil {
+		return err
 	}
-	return r.db.Create(&userRole).Error
+	var userRole models.UserRole
+
+	err := r.db.Where("user_id = ? AND workspace_id = ?", userID, workspaceID).First(&userRole).Error
+
+	if err == nil {
+		userRole.RoleID = roleID
+		return r.db.Save(&userRole).Error
+	} else {
+		newUserRole := models.UserRole{
+			ID:          uuid.New(),
+			UserID:      userID,
+			RoleID:      roleID,
+			WorkspaceID: workspaceID,
+		}
+		if err := r.db.Create(&newUserRole).Error; err != nil {
+			return err
+		}
+
+	}
+	return r.db.Model(&models.User{}).Where("id = ?", userID).Update("role", role.Name).Error
 }
 
-func (r *RbacRepo) AllRoles(workspaceID uuid.UUID) (*[]models.Role, error) {
+func (r *RbacRepo) AllRoles(workspaceID uuid.UUID) ([]models.Role, error) {
 	var roles []models.Role
 
 	err := r.db.Where("workspace_id = ?", workspaceID).Find(&roles).Error
 	if err != nil {
 		return nil, err
 	}
-	return &roles, nil
+	r.db.Debug()
+	return roles, nil
 }
 
 func (r *RbacRepo) UserHasPermission(
@@ -116,4 +134,11 @@ func (r *RbacRepo) PermissionsExist(permissionIDs []uuid.UUID) (bool, error) {
 
 func (r *RbacRepo) WithTx(tx *gorm.DB) repository.RBACrepository {
 	return &RbacRepo{db: tx}
+}
+
+func (r *RbacRepo) AllPermissions() ([]models.Permission, error) {
+	var permissions []models.Permission
+
+	err := r.db.Find(&permissions).Error
+	return permissions, err
 }

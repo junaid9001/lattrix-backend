@@ -56,9 +56,8 @@ func (h *InvitationHandler) AcceptInvitation(c *fiber.Ctx) error {
 	if !ok {
 		return fiber.NewError(fiber.StatusUnauthorized, "unauthorized")
 	}
-	email := c.Locals("email").(string)
 
-	jwt, err := h.services.AcceptInvitation(uint(userID), email, dto.Token)
+	jwt, err := h.services.AcceptInvitation(uint(userID), dto.Token)
 	if err != nil {
 		switch err {
 		case services.ErrInvalidInvite, services.ErrInviteExpired:

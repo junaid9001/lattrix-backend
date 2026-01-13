@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/junaid9001/lattrix-backend/internal/http/dto"
 	"github.com/junaid9001/lattrix-backend/internal/services"
 )
@@ -76,4 +77,32 @@ func (h *UserProfileHandler) UpdateProfileByID(c *fiber.Ctx) error {
 		},
 	})
 
+}
+
+func (h *UserProfileHandler) GetWorkspaceUsers(c *fiber.Ctx) error {
+	val := c.Locals("workspaceID")
+	if val == nil {
+		return c.Status(401).JSON(fiber.Map{"success": false})
+	}
+
+	workspaceID, ok := val.(uuid.UUID)
+	if !ok {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"message": "invalid workspace context",
+		})
+	}
+
+	users, err := h.profileService.GetWorkspaceUsers(workspaceID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"message": err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data":    users,
+	})
 }

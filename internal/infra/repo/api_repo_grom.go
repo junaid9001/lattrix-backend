@@ -22,8 +22,8 @@ func (r *ApiRepo) Create(api *models.API) error {
 	return r.db.Create(api).Error
 }
 
-func (r *ApiRepo) Delete(ID uuid.UUID, ApiGroupID uuid.UUID) error {
-	result := r.db.Where("id = ? AND api_group_id=?", ID, ApiGroupID).Delete(&models.API{})
+func (r *ApiRepo) Delete(ID uuid.UUID, ApiGroupID uuid.UUID, workspaceID uuid.UUID) error {
+	result := r.db.Where("id = ? AND api_group_id = ? AND workspace_id = ?", ID, ApiGroupID, workspaceID).Delete(&models.API{})
 	if result.Error != nil {
 		return result.Error
 	}
@@ -35,10 +35,10 @@ func (r *ApiRepo) Delete(ID uuid.UUID, ApiGroupID uuid.UUID) error {
 	return nil
 }
 
-func (r *ApiRepo) Update(ID uuid.UUID, ApiGroupID uuid.UUID, updates map[string]any) (*models.API, error) {
+func (r *ApiRepo) Update(ID uuid.UUID, ApiGroupID uuid.UUID, updates map[string]any, workspaceID uuid.UUID) (*models.API, error) {
 	result := r.db.
 		Model(&models.API{}).
-		Where("id = ? AND api_group_id = ?", ID, ApiGroupID).
+		Where("id = ? AND api_group_id = ? AND workspace_id = ?", ID, ApiGroupID, workspaceID).
 		Updates(updates)
 
 	if result.Error != nil {

@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"strconv"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/junaid9001/lattrix-backend/internal/services"
@@ -27,20 +29,15 @@ func (h *RbacHandler) CreateRoleAndAssignPermission(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
 	}
 
-	userIDval := c.Locals("userID")
 	workspaceIDval := c.Locals("workspaceID")
 
-	userID, ok := userIDval.(int)
-	if !ok {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid userID")
-	}
 	workspaceID, ok := workspaceIDval.(uuid.UUID)
 
 	if !ok {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid workspaceID")
 	}
 
-	err := h.rbacService.CreateRoleAndAssignPermissions(uint(userID), workspaceID, dto.Name, dto.PermissionIDs)
+	err := h.rbacService.CreateRoleAndAssignPermissions(workspaceID, dto.Name, dto.PermissionIDs)
 
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
@@ -74,4 +71,36 @@ func (h *RbacHandler) GetAllRoles(c *fiber.Ctx) error {
 		"data":    roles,
 	})
 
+}
+
+func (h *RbacHandler) GetAllPermissions(c *fiber.Ctx) error {
+	permissions, err := h.rbacService.AllPermissions()
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data":    permissions,
+	})
+}
+
+func (h *RbacHandler) UpdateUserRole(c *fiber.Ctx) error {
+	userID, _ := strconv.Atoi(c.Params("userId"))
+	workspaceID := c.Locals("workspaceID").(uuid.UUID)
+
+	var body struct {
+		RoleID uuid.UUID `json:"role_id"`
+	}
+
+	if err := c.BodyParser(&body); err != nil {
+		return fiber.NewError(400, "invalid body")
+	}
+
+	err := h.rbacService.AssignRoleToUser(uint(userID), workspaceID, body.RoleID)
+	if err != nil {
+		return fiber.NewError(500, err.Error())
+	}
+
+	return c.JSON(fiber.Map{"success": true})
 }

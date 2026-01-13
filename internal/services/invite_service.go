@@ -1,6 +1,7 @@
 package services
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/junaid9001/lattrix-backend/internal/domain/models"
 	"github.com/junaid9001/lattrix-backend/internal/domain/repository"
 	"github.com/junaid9001/lattrix-backend/internal/utils/jwtutil"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -22,6 +24,7 @@ type InvitationService struct {
 	inviteRepo       repository.InvitationRepository
 	notificationRepo repository.NotificationRepository
 	rbacRepo         repository.RBACrepository
+	userRepo         repository.UserRepository
 }
 
 func NewInvitationService(
@@ -29,42 +32,81 @@ func NewInvitationService(
 	inviteRepo repository.InvitationRepository,
 	notificationRepo repository.NotificationRepository,
 	rbacRepo repository.RBACrepository,
+	userRepo repository.UserRepository,
 ) *InvitationService {
 	return &InvitationService{
 		db:               db,
 		inviteRepo:       inviteRepo,
 		notificationRepo: notificationRepo,
 		rbacRepo:         rbacRepo,
+		userRepo:         userRepo,
 	}
 }
 
 func (s *InvitationService) CreateNewInvite(workspaceID, roleID uuid.UUID, email string, invitedBy uint) error {
-	// Generate a simple token (uuid)
+	existingUser, _ := s.userRepo.FindByEmail(email)
+
 	token := uuid.New().String()
 
-	invite := &models.WorkspaceInvitation{
-		ID:          uuid.New(),
-		WorkspaceID: workspaceID,
-		Email:       email,
-		RoleID:      roleID,
-		InvitedBy:   invitedBy,
-		Token:       token,
-		Status:      "pending",
-		ExpiresAt:   time.Now().Add(7 * 24 * time.Hour), // 7 days expiry
-	}
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		inviteRepo := s.inviteRepo.WithTx(tx)
+		notifRepo := s.notificationRepo.WithTx(tx)
 
-	return s.inviteRepo.Create(invite)
+		invite := &models.WorkspaceInvitation{
+			ID:          uuid.New(),
+			WorkspaceID: workspaceID,
+			Email:       email,
+			RoleID:      roleID,
+			InvitedBy:   invitedBy,
+			Token:       token,
+			Status:      "pending",
+			ExpiresAt:   time.Now().Add(7 * 24 * time.Hour),
+		}
+
+		if err := inviteRepo.Create(invite); err != nil {
+			return err
+		}
+
+		if existingUser != nil && existingUser.ID != 0 {
+
+			dataMap := map[string]string{"token": token}
+			dataBytes, _ := json.Marshal(dataMap)
+
+			notif := &models.Notification{
+				ID:          uuid.New(),
+				UserID:      existingUser.ID,
+				Type:        "invitation",
+				Title:       "Workspace Invitation",
+				Message:     "You have been invited to join a workspace.",
+				ReferenceID: invite.ID,
+				Data:        datatypes.JSON(dataBytes),
+				IsRead:      false,
+			}
+
+			if err := notifRepo.Create(notif); err != nil {
+				return err
+			}
+		} else {
+
+		}
+
+		return nil
+	})
 }
 
 func (s *InvitationService) AcceptInvitation(
 	userID uint,
-	userEmail string,
 	token string,
 ) (string, error) {
 
 	var newAccessToken string
 
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	user, err := s.userRepo.FindByID(int(userID))
+	if err != nil {
+		return "", err
+	}
+
+	err = s.db.Transaction(func(tx *gorm.DB) error {
 
 		inviteRepo := s.inviteRepo.WithTx(tx)
 		notifRepo := s.notificationRepo.WithTx(tx)
@@ -83,7 +125,7 @@ func (s *InvitationService) AcceptInvitation(
 			return ErrInviteExpired
 		}
 
-		if invite.Email != userEmail {
+		if invite.Email != user.Email {
 			return ErrInvalidInvite
 		}
 
@@ -109,6 +151,15 @@ func (s *InvitationService) AcceptInvitation(
 		if err := s.db.
 			Where("id = ? AND workspace_id = ?", invite.RoleID, invite.WorkspaceID).
 			First(&role).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Model(&models.User{}).
+			Where("id = ?", userID).
+			Updates(map[string]interface{}{
+				"workspace_id": invite.WorkspaceID,
+				"role":         role.Name,
+			}).Error; err != nil {
 			return err
 		}
 

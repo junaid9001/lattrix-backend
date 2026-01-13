@@ -18,7 +18,7 @@ func NewRbacService(RbacRepo repository.RBACrepository, db *gorm.DB) *RbacServic
 	return &RbacService{RbacRepo: RbacRepo, db: db}
 }
 
-func (s *RbacService) CreateRoleAndAssignPermissions(userID uint, workspaceID uuid.UUID, roleName string,
+func (s *RbacService) CreateRoleAndAssignPermissions(workspaceID uuid.UUID, roleName string,
 	permissionIDs []uuid.UUID) error {
 
 	err := s.db.Transaction(func(tx *gorm.DB) error {
@@ -45,16 +45,24 @@ func (s *RbacService) CreateRoleAndAssignPermissions(userID uint, workspaceID uu
 		if err := rbacRepo.AssignPermissionToRole(role.ID, permissionIDs); err != nil {
 			return err
 		}
-
-		if err := rbacRepo.AssignRoleToUser(userID, role.ID, workspaceID); err != nil {
-			return err
-		}
 		return nil
 	})
 
 	return err
 }
 
-func (s *RbacService) AllRoles(workspaceID uuid.UUID) (*[]models.Role, error) {
+func (s *RbacService) AllRoles(workspaceID uuid.UUID) ([]models.Role, error) {
 	return s.RbacRepo.AllRoles(workspaceID)
+}
+
+func (s *RbacService) AllPermissions() ([]models.Permission, error) {
+	return s.RbacRepo.AllPermissions()
+}
+
+func (s *RbacService) AssignRoleToUser(userID uint, workspaceID, roleID uuid.UUID) error {
+
+	if err := s.RbacRepo.AssignRoleToUser(userID, roleID, workspaceID); err != nil {
+		return err
+	}
+	return nil
 }

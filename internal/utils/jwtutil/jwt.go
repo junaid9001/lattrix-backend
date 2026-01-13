@@ -2,7 +2,6 @@ package jwtutil
 
 import (
 	"errors"
-	"log"
 	"strconv"
 	"time"
 
@@ -34,7 +33,7 @@ func CreateAccessToken(userID int, workSpaceID string, role string) (string, err
 			Subject:   strconv.Itoa(userID),
 			Issuer:    "lattrix",
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(60 * time.Minute)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(240 * time.Minute)),
 		},
 	}
 
@@ -64,7 +63,6 @@ func ValidateAccessToken(tokenStr string) (*AccessClaims, error) {
 	}
 
 	if !token.Valid {
-		log.Print(token)
 		return nil, errors.New("invalid token")
 	}
 

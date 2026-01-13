@@ -2,20 +2,24 @@ package handler
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/junaid9001/lattrix-backend/internal/http/dto"
 	"github.com/junaid9001/lattrix-backend/internal/services"
 	"github.com/junaid9001/lattrix-backend/internal/utils/jwtutil"
 )
 
 type AuthHandler struct {
-	authSevice *services.AuthService
+	authSevice  *services.AuthService
+	rbacService *services.RbacService
 }
 
-func NewAuthHandler(authService *services.AuthService) *AuthHandler {
+func NewAuthHandler(authService *services.AuthService, rbacService *services.RbacService) *AuthHandler {
 	return &AuthHandler{
-		authSevice: authService,
+		authSevice:  authService,
+		rbacService: rbacService,
 	}
 }
 
@@ -70,7 +74,7 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 		Secure:   false, //true in prod
 		HTTPOnly: true,
 	})
-	return c.JSON(fiber.Map{"success": true, "access_token": access})
+	return c.JSON(fiber.Map{"success": true})
 }
 
 func (h *AuthHandler) Refresh(c *fiber.Ctx) error {
@@ -109,5 +113,52 @@ func (h *AuthHandler) Refresh(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"success": true,
+	})
+}
+
+func (h *AuthHandler) Me(c *fiber.Ctx) error {
+	userID := c.Locals("userID").(int)
+	workspaceID := c.Locals("workspaceID").(uuid.UUID)
+	role := c.Locals("role")
+	permissions, err := h.rbacService.RbacRepo.UserPermissions(uint(userID), workspaceID)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data": fiber.Map{
+			"user_id":      userID,
+			"workspace_id": workspaceID,
+			"role":         role,
+			"permissions":  permissions,
+		},
+	})
+}
+
+func (h *AuthHandler) Logout(c *fiber.Ctx) error {
+	c.Cookie(&fiber.Cookie{
+		Name:     "access_token",
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Now().Add(-time.Hour),
+		HTTPOnly: true,
+		SameSite: "Lax",
+		Secure:   false, // true in prod
+	})
+
+	c.Cookie(&fiber.Cookie{
+		Name:     "refresh_token",
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Now().Add(-time.Hour),
+		HTTPOnly: true,
+		SameSite: "Lax",
+		Secure:   false, // true in prod
+	})
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success": true,
+		"message": "Logged out successfully",
 	})
 }

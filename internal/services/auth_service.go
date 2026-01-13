@@ -14,11 +14,12 @@ import (
 type AuthService struct {
 	userRepo     repository.UserRepository
 	apiGroupRepo repository.ApiGroupRepository
+	rbacRepo     repository.RBACrepository
 	db           *gorm.DB
 }
 
-func NewAuthSevice(userRepo repository.UserRepository, apiGroupRepo repository.ApiGroupRepository, db *gorm.DB) *AuthService {
-	return &AuthService{userRepo: userRepo, apiGroupRepo: apiGroupRepo, db: db}
+func NewAuthSevice(userRepo repository.UserRepository, apiGroupRepo repository.ApiGroupRepository, rbacRepo repository.RBACrepository, db *gorm.DB) *AuthService {
+	return &AuthService{userRepo: userRepo, apiGroupRepo: apiGroupRepo, rbacRepo: rbacRepo, db: db}
 }
 
 func (s *AuthService) SignUP(username, email, password string) error {
@@ -34,6 +35,7 @@ func (s *AuthService) SignUP(username, email, password string) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		userRepo := s.userRepo.WithDB(tx)
 		apiGroupRepo := s.apiGroupRepo.WithDB(tx)
+		rbacRepo := s.rbacRepo.WithTx(tx)
 
 		user := &models.User{
 			Username: username,
@@ -51,6 +53,27 @@ func (s *AuthService) SignUP(username, email, password string) error {
 		}
 		user.WorkspaceID = uuidd
 		tx.Save(&user)
+		ownerRole := &models.Role{
+			ID:          uuid.New(),
+			WorkspaceID: user.WorkspaceID,
+			Name:        "Owner",
+		}
+		if err := rbacRepo.CreateRole(ownerRole); err != nil {
+			return err
+		}
+
+		var superPerm models.Permission
+		if err := tx.Where("code = ?", "role:superadmin").First(&superPerm).Error; err != nil {
+			return errors.New("system error: superadmin permission not seeded")
+		}
+
+		if err := rbacRepo.AssignPermissionToRole(ownerRole.ID, []uuid.UUID{superPerm.ID}); err != nil {
+			return err
+		}
+
+		if err := rbacRepo.AssignRoleToUser(user.ID, ownerRole.ID, user.WorkspaceID); err != nil {
+			return err
+		}
 
 		mainApiGroup := &models.ApiGroup{
 			ID:             uuid.New(),

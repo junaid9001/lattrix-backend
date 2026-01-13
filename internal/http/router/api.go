@@ -11,20 +11,20 @@ func ApiRoutes(app *fiber.App, h *handler.ApiHandler, rbacService *services.Rbac
 
 	// group-level routes (need api-group-id)
 	apiGroup := app.Group(
-		"/api-groups/:api-group-id",
+		"/api-groups/:apiGroupID",
 	)
 
 	apiGroup.Use(middleware.Auth())
 
-	// create api
+	//create api
 	apiGroup.Post("/apis", middleware.RequirePermission(rbacService, "api:create"), h.RegisterHandler)
 
-	// list apis by group
+	//list apis by group
 	apiGroup.Get("/apis", h.ListByGroup)
 
-	// update api
-	apiGroup.Put("/apis/:api-id", middleware.RequirePermission(rbacService, "api:update"), h.UpdateApi)
+	//update api
+	apiGroup.Put("/apis/:apiId", middleware.RequirePermission(rbacService, "api:update"), h.UpdateApi)
 
-	// delete api
-	apiGroup.Delete("/apis/:api-id", middleware.RequirePermission(rbacService, "api:delete"), h.Delete)
+	//delete api
+	apiGroup.Delete("/apis/:apiId", middleware.RequirePermission(rbacService, "api:delete"), h.Delete)
 }
