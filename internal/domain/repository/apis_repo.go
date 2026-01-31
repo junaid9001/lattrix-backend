@@ -16,4 +16,10 @@ type ApiRepository interface {
 	ListActive() ([]models.API, error)
 	UpdateStatus(ID uuid.UUID, ApiGroupID uuid.UUID, lastStatus string, lastCheckedAt time.Time) error
 	ListDueForCheck(now time.Time) ([]models.API, error)
+
+	//plan related
+	CountByOwnerID(ownerID uint) (int64, error)
+	EnforcePlanLimits(userID uint, maxApis int64, minIntervel int) error
+
+	GetCheckHistory(apiID uuid.UUID, limit int) ([]models.ApiCheckResult, error)
 }

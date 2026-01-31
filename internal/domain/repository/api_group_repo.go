@@ -12,4 +12,5 @@ type ApiGroupRepository interface {
 	FindByID(ID, workspaceID uuid.UUID) (*models.ApiGroup, error)
 	Update(id, workspaceID uuid.UUID, updates map[string]any) (*models.ApiGroup, error)
 	WithDB(db *gorm.DB) ApiGroupRepository
+	ListGroups(workspaceID uuid.UUID) (*[]models.ApiGroup, error)
 }

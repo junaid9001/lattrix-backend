@@ -2,8 +2,15 @@ package models
 
 //whats user
 import (
-	"github.com/google/uuid"
 	"gorm.io/gorm"
+)
+
+type PlanType string
+
+const (
+	PlanFree   PlanType = "FREE"
+	PlanPro    PlanType = "PRO"
+	PlanAgency PlanType = "AGENCY"
 )
 
 type User struct {
@@ -12,8 +19,12 @@ type User struct {
 	Email    string `gorm:"size:100;uniqueIndex"`
 	Password string `gorm:"size:100"`
 
-	Role          string    `gorm:"size:20;not null"`          //superadmin/admin/user
-	WorkspaceID   uuid.UUID `gorm:"type:uuid;index;not null;"` //uuid.New() creates new uuid
-	IsActive      bool      `gorm:"default:true"`
-	EmailVerified bool      `gorm:"default:false"`
+	Plan               PlanType `gorm:"default:'FREE'" json:"plan"`
+	StripeCustomerID   *string  `json:"stripe_customer_id"`
+	SubscriptionStatus string   `gorm:"default:inactive" json:"subscription_status"`
+
+	IsSuperAdmin bool `gorm:"default:false"`
+
+	IsActive      bool `gorm:"default:true"`
+	EmailVerified bool `gorm:"default:false"`
 }

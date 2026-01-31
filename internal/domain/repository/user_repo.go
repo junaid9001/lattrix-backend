@@ -13,8 +13,9 @@ type UserRepository interface {
 	Create(*models.User) error
 	FindByEmail(email string) (*models.User, error)
 	FindByID(ID int) (*models.User, error)
-	UpdateProfile(userID int, updates map[string]interface{}) (*models.User, error)
-	CreateWorkSpace(userID uint) (uuid.UUID, error)
+	UpdateProfile(userID uint, updates map[string]interface{}) (*models.User, error)
+	CreateWorkSpace(userID uint, name string) (uuid.UUID, error)
 	WithDB(db *gorm.DB) UserRepository
 	WorkspaceUsers(workspaceID uuid.UUID) ([]dto.WorkspaceUsers, error)
+	GetUserWorkspaces(userID uint) ([]dto.UserWorkspaceResponse, error)
 }
