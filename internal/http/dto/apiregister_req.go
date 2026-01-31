@@ -19,6 +19,8 @@ type ApiRegisterDto struct {
 	IntervalSeconds *int `json:"interval_seconds" validate:"min=10"`
 	TimeoutMs       *int `json:"timeout_ms" validate:"min=1000"`
 
+	NotifyAfterFailures *int `json:"notify_after_failures" validate:"min=1"`
+
 	ExpectedStatusCodes    []int   `json:"expected_status_codes"`
 	ExpectedResponseTimeMs *int    `json:"expected_response_time_ms"`
 	ExpectedBodyContains   *string `json:"expected_body_contains"`
@@ -42,6 +44,8 @@ type ApiUpdateDto struct {
 
 	IntervalSeconds *int `json:"interval_seconds" validate:"omitempty,min=10"`
 	TimeoutMs       *int `json:"timeout_ms" validate:"omitempty,min=1000"`
+
+	NotifyAfterFailures *int `json:"notify_after_failures" validate:"min=1"`
 
 	ExpectedStatusCodes    *[]int  `json:"expected_status_codes,omitempty"`
 	ExpectedResponseTimeMs *int    `json:"expected_response_time_ms,omitempty"`
