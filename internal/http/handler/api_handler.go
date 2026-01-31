@@ -167,3 +167,25 @@ func (h *ApiHandler) ListByGroup(c *fiber.Ctx) error {
 		"data":    apis,
 	})
 }
+
+// metrics
+
+func (h *ApiHandler) GetMetricsHistory(c *fiber.Ctx) error {
+	apiIDParam := c.Params("api_id")
+	apiID, err := uuid.Parse(apiIDParam)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid API ID"})
+	}
+
+	limit := c.QueryInt("limit")
+
+	history, err := h.apiService.GetMetricHistory(apiID, limit)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch metrics"})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data":    history,
+	})
+}

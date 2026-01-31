@@ -165,3 +165,28 @@ func (h *ApiGroupHandler) UpdateApiGroupHandler(c *fiber.Ctx) error {
 	})
 
 }
+
+// handler of lsit groups
+func (h *ApiGroupHandler) ListApiGroupsHandler(c *fiber.Ctx) error {
+	val := c.Locals("workspaceID")
+	workspaceID, ok := val.(uuid.UUID)
+
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"success": false,
+			"message": "unauthorized: invalid workspace context",
+		})
+	}
+	apigrps, err := h.apiGroupService.ListApiGroups(workspaceID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"message": err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success": true,
+		"data":    apigrps,
+	})
+}
