@@ -47,7 +47,7 @@ func (s *ProfileService) UpdateProfileByID(userID int, username, email *string) 
 		return user, errors.New("nothing to update")
 	}
 
-	user, err = s.userRepo.UpdateProfile(userID, updates)
+	user, err = s.userRepo.UpdateProfile(uint(userID), updates)
 	if err != nil {
 		return nil, err
 	}

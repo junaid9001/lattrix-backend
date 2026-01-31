@@ -31,10 +31,6 @@ func (s *ApiGroupService) CreateNewApiGroup(userID int, name, description string
 		Description:    description,
 	}
 
-	if user.WorkspaceID != workspaceID {
-		return nil, errors.New("workspace mismatch")
-	}
-
 	if err := s.apiGroupRepo.Create(apigrp); err != nil {
 
 		return nil, err
@@ -87,4 +83,13 @@ func (s *ApiGroupService) Updateapigroup(ID, workspaceID uuid.UUID, name, descri
 		return nil, err
 	}
 	return apigrp, nil
+}
+
+// list apigroups
+func (s *ApiGroupService) ListApiGroups(workspaceID uuid.UUID) (*[]models.ApiGroup, error) {
+	apigrps, err := s.apiGroupRepo.ListGroups(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	return apigrps, nil
 }

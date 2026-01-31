@@ -147,19 +147,15 @@ func (s *InvitationService) AcceptInvitation(
 		); err != nil {
 			return err
 		}
+
 		var role models.Role
-		if err := s.db.
+		if err := tx.
 			Where("id = ? AND workspace_id = ?", invite.RoleID, invite.WorkspaceID).
 			First(&role).Error; err != nil {
 			return err
 		}
 
-		if err := tx.Model(&models.User{}).
-			Where("id = ?", userID).
-			Updates(map[string]interface{}{
-				"workspace_id": invite.WorkspaceID,
-				"role":         role.Name,
-			}).Error; err != nil {
+		if err := tx.Where("reference_id = ?", invite.ID).Delete(&models.Notification{}).Error; err != nil {
 			return err
 		}
 

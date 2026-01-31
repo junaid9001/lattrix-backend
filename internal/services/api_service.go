@@ -3,19 +3,23 @@ package services
 import (
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/junaid9001/lattrix-backend/internal/domain/models"
 	"github.com/junaid9001/lattrix-backend/internal/domain/repository"
 	"github.com/junaid9001/lattrix-backend/internal/http/dto"
+	"gorm.io/gorm"
 )
 
 type ApiService struct {
-	apiRepo repository.ApiRepository
+	apiRepo  repository.ApiRepository
+	userRepo repository.UserRepository
+	db       *gorm.DB
 }
 
-func NewApiService(apiRepo repository.ApiRepository) *ApiService {
-	return &ApiService{apiRepo: apiRepo}
+func NewApiService(apiRepo repository.ApiRepository, userRepo repository.UserRepository, db *gorm.DB) *ApiService {
+	return &ApiService{apiRepo: apiRepo, userRepo: userRepo, db: db}
 }
 
 func (s *ApiService) RegisterApiService(
@@ -24,6 +28,32 @@ func (s *ApiService) RegisterApiService(
 	workspaceID uuid.UUID,
 	dto *dto.ApiRegisterDto,
 ) (*models.API, error) {
+
+	var workspace models.Workspace
+
+	if err := s.db.Where("id = ?", workspaceID).Find(&workspace).Error; err != nil {
+		return nil, err
+	}
+	ownerID := workspace.OwnerID
+
+	owner, err := s.userRepo.FindByID(int(ownerID))
+	if err != nil {
+		return nil, errors.New("workspace owner not found")
+	}
+
+	limits, ok := models.PlanRules[owner.Plan]
+	if !ok {
+		limits = models.PlanRules[models.PlanFree]
+	}
+
+	currentCount, err := s.apiRepo.CountByOwnerID(ownerID)
+	if err != nil {
+		return nil, err
+	}
+
+	if currentCount >= limits.MaxApis {
+		return nil, errors.New("workspace owner has reached their plan limit (upgrade required)")
+	}
 
 	headers, err := json.Marshal(dto.Headers)
 	if err != nil {
@@ -45,6 +75,10 @@ func (s *ApiService) RegisterApiService(
 		interval = *dto.IntervalSeconds
 	}
 
+	if interval < limits.MinIntervel {
+		interval = limits.MinIntervel
+	}
+
 	timeout := 3000
 	if dto.TimeoutMs != nil {
 		timeout = *dto.TimeoutMs
@@ -52,6 +86,10 @@ func (s *ApiService) RegisterApiService(
 
 	if dto.AuthType != "NONE" && dto.AuthValue == nil {
 		return nil, errors.New("auth_value required")
+	}
+
+	if dto.AuthType == "API_KEY" && dto.AuthKey == nil {
+		return nil, errors.New("auth_key required for API_KEY auth type")
 	}
 
 	id := uuid.New()
@@ -78,6 +116,7 @@ func (s *ApiService) RegisterApiService(
 		ExpectedStatusCodes:    expectedStatusCodes,
 		ExpectedResponseTimeMs: dto.ExpectedResponseTimeMs,
 		ExpectedBodyContains:   dto.ExpectedBodyContains,
+		NextCheckAt:            time.Now(),
 	}
 
 	if err := s.apiRepo.Create(&api); err != nil {
@@ -87,6 +126,7 @@ func (s *ApiService) RegisterApiService(
 	return &api, nil
 }
 
+// update api
 func (s *ApiService) UpdateApi(
 	ID uuid.UUID,
 	apiGroupID uuid.UUID,
@@ -211,4 +251,14 @@ func (s *ApiService) DeleteApi(
 
 func (s *ApiService) ListApisByGroup(apiGroupID uuid.UUID) ([]models.API, error) {
 	return s.apiRepo.ListByGroup(apiGroupID)
+}
+
+func (s *ApiService) GetMetricHistory(apiID uuid.UUID, limit int) ([]models.ApiCheckResult, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 90 {
+		limit = 90
+	}
+	return s.apiRepo.GetCheckHistory(apiID, limit)
 }
