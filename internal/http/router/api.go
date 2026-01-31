@@ -27,4 +27,6 @@ func ApiRoutes(app *fiber.App, h *handler.ApiHandler, rbacService *services.Rbac
 
 	//delete api
 	apiGroup.Delete("/apis/:apiId", middleware.RequirePermission(rbacService, "api:delete"), h.Delete)
+
+	apiGroup.Get("/apis/:api_id/history", middleware.RequirePermission(rbacService, "api:read"), h.GetMetricsHistory)
 }

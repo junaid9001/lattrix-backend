@@ -16,4 +16,5 @@ func ApiGroupRoute(app *fiber.App, h *handler.ApiGroupHandler) {
 	apigroup.Get("/:id", h.GetApiGroupHandler)     // Get One
 	apigroup.Put("/", h.UpdateApiGroupHandler)     // Update
 	apigroup.Delete("/", h.DeleteApiGroupHandler)  // Delete
+	apigroup.Get("/", h.ListApiGroupsHandler)
 }
