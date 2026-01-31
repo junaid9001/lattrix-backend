@@ -38,7 +38,7 @@ func (r *userRepository) FindByID(ID int) (*models.User, error) {
 	return &user, nil
 }
 
-func (r *userRepository) UpdateProfile(userID int, updates map[string]interface{}) (*models.User, error) {
+func (r *userRepository) UpdateProfile(userID uint, updates map[string]interface{}) (*models.User, error) {
 
 	if err := r.db.Model(&models.User{}).Where("id = ?", userID).Updates(updates).Error; err != nil {
 		return nil, err
@@ -53,9 +53,10 @@ func (r *userRepository) UpdateProfile(userID int, updates map[string]interface{
 }
 
 // only during signup oneuser/oneworkspace for now
-func (r *userRepository) CreateWorkSpace(userID uint) (uuid.UUID, error) {
+func (r *userRepository) CreateWorkSpace(userID uint, name string) (uuid.UUID, error) {
 	workSpace := models.Workspace{
 		ID:      uuid.New(),
+		Name:    name,
 		OwnerID: userID,
 	}
 	err := r.db.Create(&workSpace).Error
@@ -91,6 +92,20 @@ func (r *userRepository) WorkspaceUsers(
 	}
 
 	return users, nil
+}
+
+// get a users all workspace
+func (r *userRepository) GetUserWorkspaces(userID uint) ([]dto.UserWorkspaceResponse, error) {
+	var results []dto.UserWorkspaceResponse
+
+	err := r.db.Table("workspaces w").
+		Select("w.id as workspace_id, w.name, r.name as role").
+		Joins("JOIN user_roles ur ON ur.workspace_id = w.id").
+		Joins("JOIN roles r ON r.id = ur.role_id").
+		Where("ur.user_id = ?", userID).
+		Scan(&results).Error
+
+	return results, err
 }
 
 func (r *userRepository) WithDB(db *gorm.DB) repository.UserRepository {

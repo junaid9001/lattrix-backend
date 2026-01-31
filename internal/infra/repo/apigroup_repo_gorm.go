@@ -69,6 +69,15 @@ func (r *apiGroupRepo) Update(id uuid.UUID, workspaceID uuid.UUID, updates map[s
 	return &apiGroup, nil
 }
 
+func (r *apiGroupRepo) ListGroups(workspaceID uuid.UUID) (*[]models.ApiGroup, error) {
+	var apiGroups []models.ApiGroup
+	err := r.db.Where("workspace_id = ?", workspaceID).Find(&apiGroups).Error
+	if err != nil {
+		return nil, err
+	}
+	return &apiGroups, nil
+}
+
 func (r *apiGroupRepo) WithDB(db *gorm.DB) repository.ApiGroupRepository {
 	return &apiGroupRepo{db: db}
 }

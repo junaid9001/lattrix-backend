@@ -29,7 +29,7 @@ func ConnectDB() *gorm.DB {
 
 	db.AutoMigrate(&models.User{}, &models.ApiGroup{}, &models.API{}, &models.Permission{},
 		&models.Workspace{}, &models.Role{}, &models.RolePermission{}, &models.UserRole{}, &models.WorkspaceInvitation{},
-		&models.Notification{},
+		&models.Notification{}, &models.ApiCheckResult{}, &models.WorkspaceNotification{},
 	)
 	log.Print("db connection success")
 	seeds.SeedPermissions(db)

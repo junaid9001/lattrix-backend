@@ -114,13 +114,53 @@ func (r *ApiRepo) UpdateStatus(ID uuid.UUID, ApiGroupID uuid.UUID, lastStatus st
 func (r *ApiRepo) ListDueForCheck(now time.Time) ([]models.API, error) {
 	var apis []models.API
 
-	result := r.db.Where("is_active = ?", true).
-		Where("last_checked_at IS NULL OR last_checked_at + (interval_seconds::text || ' seconds')::interval <= ?", now).
-		Find(&apis)
+	// result := r.db.Where("is_active = ?", true).
+	// 	Where("last_checked_at IS NULL OR last_checked_at + (interval_seconds::text || ' seconds')::interval <= ?", now).
+	// 	Find(&apis)
+
+	result := r.db.Where("is_active = ?", true).Where("next_check_at <= ?", now).Order("next_check_at ASC").Find(&apis)
 
 	if result.Error != nil {
 		return nil, result.Error
 	}
 
 	return apis, nil
+}
+
+//plan
+
+func (r *ApiRepo) CountByOwnerID(ownerID uint) (int64, error) {
+	var count int64
+	err := r.db.Table("apis").
+		Joins("JOIN workspaces ON workspaces.id=apis.workspace_id").
+		Where("workspaces.owner_id=?", ownerID).
+		Count(&count).Error
+	return count, err
+}
+
+// on exp downgrade
+func (r *ApiRepo) EnforcePlanLimits(userID uint, maxApis int64, minInterval int) error {
+
+	err := r.db.Exec(`
+		UPDATE apis
+		SET interval_seconds = ?
+		FROM workspaces
+		WHERE apis.workspace_id = workspaces.id
+		AND workspaces.owner_id = ?
+		AND apis.interval_seconds < ?
+	`, minInterval, userID, minInterval).Error
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *ApiRepo) GetCheckHistory(apiID uuid.UUID, limit int) ([]models.ApiCheckResult, error) {
+	var results []models.ApiCheckResult
+	err := r.db.Where("api_id = ?", apiID).
+		Order("checked_at desc").
+		Limit(limit).
+		Find(&results).Error
+	return results, err
 }

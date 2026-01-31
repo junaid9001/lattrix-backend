@@ -42,9 +42,11 @@ func (r *RbacRepo) AssignRoleToUser(userID uint, roleID, workspaceID uuid.UUID) 
 	err := r.db.Where("user_id = ? AND workspace_id = ?", userID, workspaceID).First(&userRole).Error
 
 	if err == nil {
+
 		userRole.RoleID = roleID
 		return r.db.Save(&userRole).Error
 	} else {
+
 		newUserRole := models.UserRole{
 			ID:          uuid.New(),
 			UserID:      userID,
@@ -54,9 +56,9 @@ func (r *RbacRepo) AssignRoleToUser(userID uint, roleID, workspaceID uuid.UUID) 
 		if err := r.db.Create(&newUserRole).Error; err != nil {
 			return err
 		}
-
 	}
-	return r.db.Model(&models.User{}).Where("id = ?", userID).Update("role", role.Name).Error
+
+	return nil
 }
 
 func (r *RbacRepo) AllRoles(workspaceID uuid.UUID) ([]models.Role, error) {
