@@ -26,13 +26,13 @@ func Start() {
 
 	//message broker
 	kafkaWriter := publisher.NewKafkaWriter(publisher.Kafkaconfig{
-		Brokers: []string{"localhost:9092"},
+		Brokers: []string{config.AppConfig.KAFKA_BROKER},
 		Topic:   "api-jobs",
 	})
 	defer kafkaWriter.Close()
 
 	kafkaReader := consumer.NewKafkaConsumer(consumer.ReaderConfig{
-		Brokers: []string{"localhost:9092"},
+		Brokers: []string{config.AppConfig.KAFKA_BROKER},
 		Topic:   "api-jobs",
 		GroupID: "lattrix-workers",
 	})
@@ -83,7 +83,7 @@ func Start() {
 
 	//handlers
 	paymentHandler := handler.NewPaymentHandler(paymentService, userRepo, apiRepo, config.AppConfig)
-	authHandler := handler.NewAuthHandler(authService, rbacService, profileService)
+	authHandler := handler.NewAuthHandler(authService, rbacService, profileService, db)
 	profileHandler := handler.NewProfileHandler(profileService)
 	apiGroupHandler := handler.NewApiGroupHandler(apiGroupService)
 	apiHandler := handler.NewApiHandler(apiService)
@@ -95,7 +95,7 @@ func Start() {
 
 	app := fiber.New()
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "http://localhost:5173",
+		AllowOrigins:     config.AppConfig.FRONTEND_URL,
 		AllowCredentials: true,
 		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
 		AllowHeaders:     "Origin, Content-Type, Accept",
