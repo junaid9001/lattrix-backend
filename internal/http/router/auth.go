@@ -7,6 +7,15 @@ import (
 )
 
 func AuthRoutes(app *fiber.App, authHandler *handler.AuthHandler) {
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"status":  "success",
+			"message": "Lattrix API is running!",
+			"version": "1.0.0",
+		})
+	})
+
 	auth := app.Group("/auth")
 	auth.Post("/signup", authHandler.Signup)
 	auth.Post("/login", authHandler.Login)
