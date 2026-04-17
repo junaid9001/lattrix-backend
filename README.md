@@ -24,47 +24,47 @@ Lattrix acts as a centralized server that manages user requests while efficientl
 
 ```mermaid
 flowchart TD
-    subgraph Client [Clients]
-        UI[Lattrix Frontend Dashboard]
-        Admin[SysAdmin Dashboard]
+    subgraph Client ["Clients"]
+        UI["Lattrix Frontend Dashboard"]
+        Admin["SysAdmin Dashboard"]
     end
 
-    subgraph API_Layer [API Layer - Fiber HTTP]
-        Auth[Auth/RBAC Router]
-        API_Manager[API Management]
-        Payment[Stripe Payments]
+    subgraph API_Layer ["API Layer - Fiber HTTP"]
+        Auth["Auth/RBAC Router"]
+        API_Manager["API Management"]
+        Payment["Stripe Payments"]
     end
 
-    subgraph Message_Broker [Message Broker]
-        Kafka[(Kafka / Redpanda \n Topic: api-jobs)]
+    subgraph Message_Broker ["Message Broker"]
+        Kafka[("Kafka / Redpanda <br/> Topic: api-jobs")]
     end
 
-    subgraph Background_Workers [Async Workers]
-        Scheduler[API Job Scheduler]
-        WorkerPool[Worker Pool \n Consumer Goroutines]
+    subgraph Background_Workers ["Async Workers"]
+        Scheduler["API Job Scheduler"]
+        WorkerPool["Worker Pool <br/> Consumer Goroutines"]
     end
 
-    subgraph Data_Layer [Data & Notifications]
-        DB[(PostgreSQL)]
-        Email[Email Service (SMTP)]
+    subgraph Data_Layer ["Data & Notifications"]
+        DB[("PostgreSQL")]
+        Email["Email Service (SMTP)"]
     end
 
     %% Client Interactions
-    UI -->|Manage APIs, Workspaces| API_Layer
+    UI -->|"Manage APIs, Workspaces"| API_Layer
     Admin --> API_Layer
 
     %% Internal Data flow
-    API_Layer <-->|Read / Write| DB
+    API_Layer <-->|"Read / Write"| DB
     
     %% Scheduler reads APIs and publishes to Kafka
-    Scheduler -->|Polls Due APIs| DB
-    Scheduler -.->|Publishes Jobs| Kafka
+    Scheduler -->|"Polls Due APIs"| DB
+    Scheduler -.->|"Publishes Jobs"| Kafka
 
     %% Workers consume jobs
-    Kafka -.->|Consumes Job| WorkerPool
-    WorkerPool -->|Executes HTTP Request| ThirdParty[Third-Party Endpoints]
-    WorkerPool -->|Persists Results & Latency| DB
-    WorkerPool -->|Triggers Down Alerts| Email
+    Kafka -.->|"Consumes Job"| WorkerPool
+    WorkerPool -->|"Executes HTTP Request"| ThirdParty["Third-Party Endpoints"]
+    WorkerPool -->|"Persists Results & Latency"| DB
+    WorkerPool -->|"Triggers Down Alerts"| Email
 ```
 
 ---
