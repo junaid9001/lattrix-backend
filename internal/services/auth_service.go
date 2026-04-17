@@ -23,7 +23,7 @@ func NewAuthSevice(userRepo repository.UserRepository, apiGroupRepo repository.A
 	return &AuthService{userRepo: userRepo, apiGroupRepo: apiGroupRepo, rbacRepo: rbacRepo, db: db}
 }
 
-func (s *AuthService) SignUP(username, email, password string) error {
+func (s *AuthService) SignUP(username, email, password string, userID *uint) error {
 	if _, err := s.userRepo.FindByEmail(email); err == nil {
 		return errors.New("email already exists")
 	}
@@ -47,6 +47,7 @@ func (s *AuthService) SignUP(username, email, password string) error {
 		if err := userRepo.Create(user); err != nil {
 			return err
 		}
+		*userID = user.ID
 
 		wsName := username + "'s Workspace"
 
@@ -99,6 +100,9 @@ func (s *AuthService) Login(email, password string) (string, []dto.UserWorkspace
 	user, err := s.userRepo.FindByEmail(email)
 	if err != nil {
 		return "", nil, errors.New("invalid email or password")
+	}
+	if !user.EmailVerified {
+		return "", nil, errors.New("verify email")
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
