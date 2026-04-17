@@ -13,11 +13,9 @@ import (
 )
 
 func ConnectDB() *gorm.DB {
-	if err := godotenv.Load(); err != nil {
-		log.Fatal("error loading .env file")
-	}
+	_ = godotenv.Load()
 
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable", os.Getenv("DB_HOST"),
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=require", os.Getenv("DB_HOST"),
 		os.Getenv("DB_USER"),
 		os.Getenv("DB_PASSWORD"),
 		os.Getenv("DB_NAME"), os.Getenv("DB_PORT"))
@@ -29,8 +27,20 @@ func ConnectDB() *gorm.DB {
 
 	db.AutoMigrate(&models.User{}, &models.ApiGroup{}, &models.API{}, &models.Permission{},
 		&models.Workspace{}, &models.Role{}, &models.RolePermission{}, &models.UserRole{}, &models.WorkspaceInvitation{},
-		&models.Notification{}, &models.ApiCheckResult{}, &models.WorkspaceNotification{},
+		&models.Notification{}, &models.ApiCheckResult{}, &models.WorkspaceNotification{}, &models.VerificationOTP{},
 	)
+
+	sysAdminEmail := os.Getenv("SYS_ADMIN_EMAIL")
+	sysAdminPassword := os.Getenv("SYS_ADMIN_PASSWORD")
+	if sysAdminEmail == "" || sysAdminPassword == "" {
+		log.Fatal("sys admin configs are missing")
+	}
+
+	status := seeds.SeedSysAdmin(db, sysAdminEmail, sysAdminPassword)
+	if status != nil {
+		log.Fatal("sys admin seeding failed")
+	}
+
 	log.Print("db connection success")
 	seeds.SeedPermissions(db)
 	return db

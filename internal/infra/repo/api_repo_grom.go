@@ -164,3 +164,9 @@ func (r *ApiRepo) GetCheckHistory(apiID uuid.UUID, limit int) ([]models.ApiCheck
 		Find(&results).Error
 	return results, err
 }
+
+func (r *ApiRepo) BulkUpdateNextCheck(apiIDs []uuid.UUID) error {
+	return r.db.Model(&models.API{}).
+		Where("id IN ?", apiIDs).
+		Update("next_check_at", gorm.Expr("now() + interval '1 second' * interval_seconds")).Error
+}
