@@ -1,28 +1,40 @@
 package handler
 
 import (
+	"fmt"
+	"math/rand/v2"
 	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/junaid9001/lattrix-backend/internal/domain/models"
 	"github.com/junaid9001/lattrix-backend/internal/http/dto"
 	"github.com/junaid9001/lattrix-backend/internal/services"
+	"github.com/junaid9001/lattrix-backend/internal/utils"
 	"github.com/junaid9001/lattrix-backend/internal/utils/jwtutil"
+	"gorm.io/gorm"
 )
 
 type AuthHandler struct {
 	authSevice     *services.AuthService
 	rbacService    *services.RbacService
 	profileService *services.ProfileService
+	db             *gorm.DB
 }
 
-func NewAuthHandler(authService *services.AuthService, rbacService *services.RbacService, profileService *services.ProfileService) *AuthHandler {
+func NewAuthHandler(authService *services.AuthService, rbacService *services.RbacService, profileService *services.ProfileService, db *gorm.DB) *AuthHandler {
 	return &AuthHandler{
 		authSevice:     authService,
 		rbacService:    rbacService,
 		profileService: profileService,
+		//new
+		db: db,
 	}
+}
+
+func GenerateOtp() string {
+	return fmt.Sprintf("%06d", rand.Int32N(1000000))
 }
 
 // signup handler
@@ -32,15 +44,32 @@ func (h *AuthHandler) Signup(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"success": false, "message": "validation failed", "error": err.Error()})
 	}
+	var userID uint
 
-	err := h.authSevice.SignUP(req.Username, req.Email, req.Password)
+	err := h.authSevice.SignUP(req.Username, req.Email, req.Password, &userID)
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{
 			"success": false,
 			"message": err.Error(),
 		})
 	}
-	return c.Status(200).JSON(fiber.Map{"success": true, "message": "signup success"})
+	//new
+	if userID < 1 {
+		return c.Status(500).JSON(fiber.Map{
+			"success": false,
+			"message": "Internal Server error",
+		})
+	}
+	otp := GenerateOtp()
+	verOtp := models.VerificationOTP{
+		UserID:    userID,
+		Code:      otp,
+		ExpiresAt: time.Now().Add(15 * time.Minute),
+	}
+	h.db.Save(&verOtp)
+	go utils.SendEmail(req.Email, "Verification Code", "Your code is "+otp)
+	//---
+	return c.Status(200).JSON(fiber.Map{"success": true, "message": "signup success", "email": req.Email})
 }
 
 // login handler
@@ -55,6 +84,7 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	}
 	refresh, workspaces, err := h.authSevice.Login(req.Email, req.Password)
 	if err != nil {
+
 		return c.Status(401).JSON(fiber.Map{
 			"success": false,
 			"message": err.Error(),
@@ -64,8 +94,8 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 		Name:     "refresh_token",
 		Value:    refresh,
 		Path:     "/",
-		SameSite: "Lax",
-		Secure:   false, //true in prod
+		SameSite: "None",
+		Secure:   true, //true in prod
 		HTTPOnly: true,
 	})
 	return c.JSON(fiber.Map{"success": true, "workspaces": workspaces})
@@ -102,8 +132,8 @@ func (h *AuthHandler) SelectWorkspace(c *fiber.Ctx) error {
 		Value:    accessToken,
 		Path:     "/",
 		HTTPOnly: true,
-		SameSite: "Lax",
-		Secure:   false,
+		SameSite: "None",
+		Secure:   true,
 	})
 
 	return c.JSON(fiber.Map{"success": true})
@@ -139,8 +169,8 @@ func (h *AuthHandler) Refresh(c *fiber.Ctx) error {
 		Value:    accessToken,
 		Path:     "/",
 		HTTPOnly: true,
-		SameSite: fiber.CookieSameSiteLaxMode,
-		Secure:   false, // true in prod
+		SameSite: "None",
+		Secure:   true, // true in prod
 	})
 
 	return c.JSON(fiber.Map{
@@ -258,4 +288,76 @@ func (h *AuthHandler) GetUserWorkspaces(c *fiber.Ctx) error {
 		"success": true,
 		"data":    workspaces,
 	})
+}
+
+//new
+
+type verifyOtpRequest struct {
+	Email string `json:"email"`
+	OTP   string `json:"otp"`
+}
+
+func (h *AuthHandler) VerifyEmail(c *fiber.Ctx) error {
+	var req verifyOtpRequest
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Invalid request"})
+	}
+
+	var user models.User
+
+	if err := h.db.Where("email=?", req.Email).First(&user).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"success": false, "message": "User not found"})
+	}
+
+	var otpRecord models.VerificationOTP
+	if err := h.db.Where("user_id = ? AND code = ?", user.ID, req.OTP).First(&otpRecord).Error; err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Invalid OTP"})
+	}
+
+	if time.Now().After(otpRecord.ExpiresAt) {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "OTP expired"})
+	}
+
+	h.db.Model(&user).Update("email_verified", true)
+	h.db.Delete(&otpRecord)
+
+	return c.JSON(fiber.Map{"success": true, "message": "Email verified successfully"})
+}
+
+func (h *AuthHandler) ResendOTP(c *fiber.Ctx) error {
+	var req struct {
+		Email string `json:"email" validate:"required"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Invalid request"})
+	}
+
+	var user models.User
+
+	if err := h.db.Where("email=?", req.Email).First(&user).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"success": false, "message": "User not found"})
+	}
+
+	if user.EmailVerified {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Email is already verified"})
+	}
+
+	h.db.Where("user_id = ?", user.ID).Delete(&models.VerificationOTP{})
+
+	newOTP := GenerateOtp()
+
+	otpRecord := models.VerificationOTP{
+		UserID:    user.ID,
+		Code:      newOTP,
+		ExpiresAt: time.Now().Add(15 * time.Minute),
+	}
+
+	h.db.Save(&otpRecord)
+
+	go utils.SendEmail(req.Email, "Verification Code", "Your new code is "+newOTP)
+
+	return c.JSON(fiber.Map{"success": true, "message": "New verification code sent"})
+
 }

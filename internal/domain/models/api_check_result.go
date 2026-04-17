@@ -8,9 +8,9 @@ import (
 
 type ApiCheckResult struct {
 	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	APIID     uuid.UUID `gorm:"type:uuid;not null;index"`
+	APIID     uuid.UUID `gorm:"type:uuid;not null;index:idx_api_checks,priority:1"`
 	ApiName   string    `json:"api_name"`
-	CheckedAt time.Time `gorm:"not null;index" json:"checked_at"`
+	CheckedAt time.Time `gorm:"not null;index:idx_api_checks,priority:2,sort:desc" json:"checked_at"`
 	Status    string    `gorm:"not null;size:20" json:"status"` //up/down
 
 	StatusCode     *int `json:"status_code"`

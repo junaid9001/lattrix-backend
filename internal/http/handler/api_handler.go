@@ -31,7 +31,9 @@ func (h *ApiHandler) RegisterHandler(c *fiber.Ctx) error {
 			"message": "Unauthorized: invalid user context",
 		})
 	}
-
+	if *dto.NotifyAfterFailures < 10 {
+		*dto.NotifyAfterFailures = 10
+	}
 	workspaceIDVal := c.Locals("workspaceID")
 	workspaceID, ok := workspaceIDVal.(uuid.UUID)
 	if !ok {

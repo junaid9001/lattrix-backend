@@ -11,6 +11,10 @@ func AuthRoutes(app *fiber.App, authHandler *handler.AuthHandler) {
 	auth.Post("/signup", authHandler.Signup)
 	auth.Post("/login", authHandler.Login)
 
+	//new
+	auth.Post("verify-otp", authHandler.VerifyEmail)
+	auth.Post("resend-otp", authHandler.ResendOTP)
+
 	auth.Post("/select-workspace", authHandler.SelectWorkspace)
 	auth.Post("/workspace", middleware.Auth(), authHandler.CreateWorkspace)
 	auth.Get("/workspaces", middleware.Auth(), authHandler.GetUserWorkspaces)

@@ -11,4 +11,6 @@ type Config struct {
 	FRONTEND_URL        string
 
 	STRIPE_WEBHOOK_SECRET string
+
+	KAFKA_BROKER string
 }

@@ -11,7 +11,7 @@ var AppConfig *Config
 
 func Load() {
 
-	godotenv.Load()
+	_ = godotenv.Load()
 
 	secret := os.Getenv("JWT_KEY")
 	if secret == "" {
@@ -24,6 +24,8 @@ func Load() {
 	stripePricePro := os.Getenv("STRIPE_PRICE_PRO")
 	stripePriceAgency := os.Getenv("STRIPE_PRICE_AGENCY")
 	stripeWebHookSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
+	frontendURL := os.Getenv("FRONTEND_URL")
+	kafkaBroker := os.Getenv("KAFKA_BROKER")
 
 	AppConfig = &Config{
 		JWT_KEY:               []byte(secret),
@@ -32,8 +34,9 @@ func Load() {
 		STRIPE_SECRET_KEY:     stripeSecret,
 		STRIPE_PRICE_PRO:      stripePricePro,
 		STRIPE_PRICE_AGENCY:   stripePriceAgency,
-		FRONTEND_URL:          "http://localhost:5173",
+		FRONTEND_URL:          frontendURL,
 		STRIPE_WEBHOOK_SECRET: stripeWebHookSecret,
+		KAFKA_BROKER:          kafkaBroker,
 	}
 }
 

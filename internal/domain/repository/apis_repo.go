@@ -22,4 +22,6 @@ type ApiRepository interface {
 	EnforcePlanLimits(userID uint, maxApis int64, minIntervel int) error
 
 	GetCheckHistory(apiID uuid.UUID, limit int) ([]models.ApiCheckResult, error)
+
+	BulkUpdateNextCheck(apiIDs []uuid.UUID) error
 }

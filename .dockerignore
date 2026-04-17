@@ -1,0 +1,6 @@
+stripe.exe
+.env
+*.env
+.git
+.gitignore
+docker-compose.yaml
