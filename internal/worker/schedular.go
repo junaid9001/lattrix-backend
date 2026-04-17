@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/junaid9001/lattrix-backend/internal/domain/repository"
 	"github.com/junaid9001/lattrix-backend/internal/http/dto"
 	"github.com/junaid9001/lattrix-backend/internal/publisher"
@@ -35,6 +36,8 @@ func (s *Schedular) Start(ctx context.Context) {
 			if err != nil {
 				continue
 			}
+
+			var dispatchedIDs []uuid.UUID
 
 			for _, api := range apis {
 
@@ -89,6 +92,14 @@ func (s *Schedular) Start(ctx context.Context) {
 					continue
 				}
 
+				dispatchedIDs = append(dispatchedIDs, api.ID)
+
+			}
+			if len(dispatchedIDs) > 0 {
+				err := s.apiRepo.BulkUpdateNextCheck(dispatchedIDs)
+				if err != nil {
+					log.Printf("Failed to bulk update scheduled APIs: %v", err)
+				}
 			}
 		}
 	}

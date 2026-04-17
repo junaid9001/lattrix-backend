@@ -258,7 +258,7 @@ func (c *Consumer) HandleCheckJob(data []byte) error {
 		}(result.CreatedByEmail, alertTitle, alertBody)
 
 		c.workNotiService.Create(api.WorkspaceID, reason, alertTitle)
-		downCount = 0
+
 	}
 
 	c.db.Model(&models.API{}).Where("id = ?", job.APIID).Updates(map[string]interface{}{
