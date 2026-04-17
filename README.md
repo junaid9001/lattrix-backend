@@ -1,5 +1,7 @@
 # Lattrix 🚀
 
+🔗 **[Live Demo](https://lattrix.vercel.app/)** | 📡 **[Backend API Endpoint (AWS)](https://lattrix.tripneo.in)**
+
 Lattrix is a fast, scalable, and robust API Uptime Monitoring and Analytics platform. It empowers developers and teams to monitor their API endpoints, track uptime, decompose latency bottlenecks (DNS, TCP, TLS, TTFB), and get instant alerts when things go wrong.
 
 Built for B2B SaaS teams, Lattrix supports workspaces, detailed role-based access control (RBAC), and subscription-based billing via Stripe. The backend is written in **Go** utilizing the **Fiber** framework for high-throughput HTTP handling, backed by **PostgreSQL** for persistence and **Kafka** (Redpanda) for scalable, distributed API health checking.
